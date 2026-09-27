@@ -23,6 +23,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Check secrets
+        env:
+          URL: ${{ secrets.VITE_SUPABASE_URL }}
+          KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "::error::ยังไม่ได้ตั้ง secrets VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY (Settings → Secrets and variables → Actions)"
+            exit 1
+          fi
       - run: npm ci
       - run: npm test
       - name: Build
