@@ -188,6 +188,51 @@ function DayDetail({ day, source, maxHr }: { day: RunPlanDay; source?: RunPlanDa
 
 const TYPES = Object.keys(WORKOUT_TH) as WorkoutType[]
 
+/** เพิ่มช่วงการซ้อมแบบฟอร์ม เช่น 8 × 400 ม. @ 90-95% พักจ็อก 2 นาที */
+function SegmentBuilder({ onAdd }: { onAdd: (s: Segment) => void }) {
+  const [v, setV] = useState({ repeat: '1', work: '', unit: 'km', hrMin: '', hrMax: '', rec: '', recUnit: 'sec', recType: 'jog' })
+  const cls = 'min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-center dark:border-slate-700 dark:bg-slate-950'
+  const add = () => {
+    const w = Number(v.work)
+    if (!w) return
+    const s: Segment = { repeat: Math.max(1, Number(v.repeat) || 1), work_type: 'run' }
+    if (v.unit === 'km') s.work_km = w
+    else if (v.unit === 'm') s.work_m = w
+    else s.work_sec = Math.round(w * 60)
+    if (v.hrMin) { s.hr_min_pct = Number(v.hrMin); s.hr_max_pct = Number(v.hrMax || v.hrMin) }
+    const r = Number(v.rec)
+    if (r) {
+      if (v.recUnit === 'm') s.recover_m = r
+      else s.recover_sec = v.recUnit === 'min' ? Math.round(r * 60) : r
+      s.recover_type = v.recType as Segment['recover_type']
+    }
+    onAdd(s)
+    setV({ ...v, work: '', rec: '' })
+  }
+  const set = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setV({ ...v, [k]: e.target.value })
+  return (
+    <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
+      <div className="mb-2 text-sm font-semibold">+ เพิ่มช่วง (เที่ยว × ระยะ/เวลา)</div>
+      <div className="grid grid-cols-[3rem_1fr_4.5rem] items-center gap-2 text-sm">
+        <input className={cls} inputMode="numeric" value={v.repeat} onChange={set('repeat')} aria-label="จำนวนเที่ยว" />
+        <input className={cls} inputMode="decimal" placeholder="ระยะ/เวลา" value={v.work} onChange={set('work')} />
+        <select className={cls} value={v.unit} onChange={set('unit')}><option value="km">กม.</option><option value="m">ม.</option><option value="min">นาที</option></select>
+      </div>
+      <div className="mt-2 grid grid-cols-[1fr_1fr_auto] items-center gap-2 text-sm">
+        <input className={cls} inputMode="numeric" placeholder="HR ต่ำ %" value={v.hrMin} onChange={set('hrMin')} />
+        <input className={cls} inputMode="numeric" placeholder="HR สูง %" value={v.hrMax} onChange={set('hrMax')} />
+        <span className="text-xs text-slate-500">%MaxHR</span>
+      </div>
+      <div className="mt-2 grid grid-cols-[1fr_4.5rem_5rem] items-center gap-2 text-sm">
+        <input className={cls} inputMode="decimal" placeholder="พัก (ไม่บังคับ)" value={v.rec} onChange={set('rec')} />
+        <select className={cls} value={v.recUnit} onChange={set('recUnit')}><option value="sec">วิ</option><option value="min">นาที</option><option value="m">ม.</option></select>
+        <select className={cls} value={v.recType} onChange={set('recType')}><option value="jog">จ็อก</option><option value="walk">เดิน</option><option value="rest">พัก</option></select>
+      </div>
+      <Button className="mt-2" size="sm" block variant="secondary" onClick={add}>เพิ่มช่วงนี้</Button>
+    </div>
+  )
+}
+
 function DayEditor({ day, onClose, onSaved }: { day: RunPlanDay; onClose: () => void; onSaved: () => Promise<unknown> }) {
   const [f, setF] = useState({
     title: day.title,
@@ -235,6 +280,11 @@ function DayEditor({ day, onClose, onSaved }: { day: RunPlanDay; onClose: () => 
         </div>
         <label className="flex items-center gap-2"><input type="checkbox" className="size-5" checked={f.add_weights} onChange={(e) => setF({ ...f, add_weights: e.target.checked })} /> บอดี้เวทหลังวิ่ง</label>
         <label className="flex items-center gap-2"><input type="checkbox" className="size-5" checked={f.add_strides} onChange={(e) => setF({ ...f, add_strides: e.target.checked })} /> Strides</label>
+        <SegmentBuilder onAdd={(seg) => {
+          let cur: Segment[] = []
+          try { cur = JSON.parse(f.segments || '[]') } catch { cur = [] }
+          setF({ ...f, segments: JSON.stringify([...cur, seg], null, 1) })
+        }} />
         <Textarea label="Segments (JSON)" className="font-mono text-xs" rows={8} value={f.segments} onChange={(e) => setF({ ...f, segments: e.target.value })} />
         <p className="text-xs text-slate-500">
           เช่น {'[{"repeat":20,"work_m":100,"hr_min_pct":85,"hr_max_pct":90,"recover_m":100,"recover_type":"jog"}]'}

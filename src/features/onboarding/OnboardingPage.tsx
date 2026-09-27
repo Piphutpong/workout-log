@@ -7,7 +7,7 @@ import { rangeWarnings } from '@/lib/validation'
 import { Button, Card, ErrorBox, Input, Select, Spinner } from '@/components/ui'
 import { confirmWarnings } from '@/components/overlay'
 import { FREE_RUN_TEMPLATES } from '@/features/run/runMeta'
-import type { Activity, DayType, Goal, NutritionTarget } from '@/types/database'
+import type { Activity, DayType, Goal, Json, NutritionTarget } from '@/types/database'
 
 const DAY_TYPE_TH: Record<DayType, string> = { weight: 'วันเวท', run_easy: 'วิ่งเบา', run_hard: 'วิ่งหนัก', rest: 'วันพัก' }
 const ACTIVITY_TH: Record<Activity, string> = { weight: 'เวท', run: 'วิ่ง', rest: 'พัก', active_recovery: 'Active recovery' }
@@ -101,7 +101,7 @@ export function OnboardingPage() {
           activity: row.activity,
           run_type: row.activity === 'run' ? (row.run_type ?? 'easy') : null,
           title: tpl?.title ?? null,
-          segments: tpl?.segments ?? [],
+          segments: (tpl?.segments ?? []) as unknown as Json,
         }).eq('id', row.id)
         if (r.error) throw r.error
       }

@@ -19,6 +19,7 @@ export function RunPlansPage() {
   const [enrolling, setEnrolling] = useState<RunPlan | null>(null)
   const [importError, setImportError] = useState<unknown>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [creating, setCreating] = useState(false)
 
   if (plans.isLoading || enrollment.isLoading) return <Spinner />
   const active = enrollment.data?.active
@@ -104,7 +105,10 @@ export function RunPlansPage() {
 
       <Card
         title="แผนของฉัน"
-        action={<Button size="sm" variant="secondary" onClick={() => fileRef.current?.click()}>นำเข้า JSON</Button>}
+        action={<div className="flex gap-2">
+          <Button size="sm" onClick={() => setCreating(true)}>+ สร้างแผน</Button>
+          <Button size="sm" variant="secondary" onClick={() => fileRef.current?.click()}>นำเข้า JSON</Button>
+        </div>}
       >
         <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => {
           const f = e.target.files?.[0]
@@ -118,6 +122,12 @@ export function RunPlansPage() {
       </Card>
 
       <ZoneTable maxHr={settings.data?.max_hr ?? 186} />
+
+      {creating && <NewPlanModal onClose={() => setCreating(false)} onCreated={async (id) => {
+        await refresh()
+        setCreating(false)
+        navigate(`/plans/${id}`)
+      }} />}
 
       {enrolling && (
         <EnrollModal
@@ -183,6 +193,49 @@ function EnrollModal({ plan, hasActive, onClose, onDone }: {
       <Input label="วันเริ่ม (Day 1)" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       <p className="mt-2 text-sm text-slate-500">{plan.total_days} วัน · ระหว่างแผน หน้า "วันนี้" จะใช้ตารางจากแผนแทนตารางประจำสัปดาห์</p>
       {hasActive && <p className="mt-2 text-sm text-amber-600">แผนที่กำลังทำอยู่จะถูกปิด (status = done)</p>}
+    </Modal>
+  )
+}
+
+/** สร้างแผนเปล่า (ทุกวันเป็น "พัก") แล้วไปแก้รายวันในปฏิทิน */
+function NewPlanModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => Promise<void> }) {
+  const [f, setF] = useState({ name: '', level: 'begin' as 'begin' | 'performance', days: '84', km: '' })
+  const [error, setError] = useState<unknown>(null)
+  const create = async () => {
+    setError(null)
+    try {
+      const n = Math.round(Number(f.days))
+      if (!f.name.trim()) throw new Error('กรอกชื่อแผน')
+      if (!(n >= 1 && n <= 400)) throw new Error('จำนวนวัน 1-400')
+      const id = await savePlanAsMine({
+        name: f.name.trim(), level: f.level, total_days: n, goal_distance_km: f.km ? Number(f.km) : null, source: 'สร้างเอง', note: null,
+        days: Array.from({ length: n }, (_, i) => ({ day_no: i + 1, workout_type: 'rest' as const, title: 'พัก', segments: [] })),
+      })
+      toast('สร้างแผนแล้ว — แตะแต่ละวันในปฏิทินเพื่อแก้')
+      await onCreated(id)
+    } catch (e) {
+      setError(e)
+    }
+  }
+  return (
+    <Modal open onClose={onClose} title="สร้างแผนวิ่งใหม่"
+      footer={<><Button variant="secondary" block onClick={onClose}>ยกเลิก</Button><Button block onClick={() => void create()}>สร้าง</Button></>}>
+      <div className="space-y-3">
+        <Input label="ชื่อแผน" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="เช่น 10K ของฉัน" />
+        <div className="grid grid-cols-3 gap-3">
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">ระดับ</span>
+            <select className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-2 dark:border-slate-700 dark:bg-slate-950" value={f.level}
+              onChange={(e) => setF({ ...f, level: e.target.value as 'begin' | 'performance' })}>
+              <option value="begin">Begin</option><option value="performance">Performance</option>
+            </select>
+          </label>
+          <Input label="จำนวนวัน" inputMode="numeric" value={f.days} onChange={(e) => setF({ ...f, days: e.target.value })} />
+          <Input label="ระยะเป้า (กม.)" inputMode="decimal" value={f.km} onChange={(e) => setF({ ...f, km: e.target.value })} />
+        </div>
+        <p className="text-xs text-slate-500">ทุกวันเริ่มเป็น "พัก" แล้วแตะวันในปฏิทิน → แก้ไขวันนี้ · หรือคัดลอกแผน FASTBULL มาแก้จะเร็วกว่า</p>
+        <ErrorBox error={error} />
+      </div>
     </Modal>
   )
 }

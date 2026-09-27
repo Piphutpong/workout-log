@@ -2,12 +2,18 @@
 // ต้องมี env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (secret key ใช้ฝั่งเซิร์ฟเวอร์เท่านั้น)
 import { writeFileSync } from 'node:fs'
 
-const url = process.env.SUPABASE_URL
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-if (!url || !key) {
-  console.error('ต้องตั้ง SUPABASE_URL และ SUPABASE_SERVICE_ROLE_KEY')
+// ตัดช่องว่าง/ขึ้นบรรทัด/เครื่องหมายคำพูดที่ติดมาตอนวาง secret
+const clean = (v) => (v ?? '').trim().replace(/^["']|["']$/g, '').trim()
+const url = clean(process.env.SUPABASE_URL).replace(/\/+$/, '')
+const key = clean(process.env.SUPABASE_SERVICE_ROLE_KEY)
+const fail = (msg) => {
+  console.error(`::error::${msg}`)
   process.exit(1)
 }
+if (!url || !key) fail('ต้องตั้ง SUPABASE_URL และ SUPABASE_SERVICE_ROLE_KEY')
+if (!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(url)) fail(`SUPABASE_URL ไม่ถูกรูปแบบ (ได้ความยาว ${url.length} ตัวอักษร)`)
+if (key.startsWith('sb_publishable_')) fail('ใส่ Publishable key มา — ต้องเป็น Secret key (sb_secret_...) หรือ legacy service_role')
+if (!key.startsWith('sb_secret_') && !key.startsWith('eyJ')) fail(`SUPABASE_SERVICE_ROLE_KEY ไม่ถูกรูปแบบ (ขึ้นต้นด้วย "${key.slice(0, 4)}…", ยาว ${key.length})`)
 
 // ตรงกับ EXPORT_TABLES ใน src/lib/dataio.ts
 const TABLES = [
@@ -18,7 +24,7 @@ const TABLES = [
   'nutrition_targets', 'weekly_reviews', 'tdee_proposals',
 ]
 
-const headers = { apikey: key, Authorization: `Bearer ${key}` }
+const headers = key.startsWith('eyJ') ? { apikey: key, Authorization: `Bearer ${key}` } : { apikey: key }
 const tables = {}
 let total = 0
 for (const t of TABLES) {
@@ -28,7 +34,7 @@ for (const t of TABLES) {
     const res = await fetch(`${url}/rest/v1/${t}?select=*&order=id${filter}`, {
       headers: { ...headers, Range: `${from}-${from + 999}`, 'Range-Unit': 'items' },
     })
-    if (!res.ok) throw new Error(`${t}: HTTP ${res.status} ${await res.text()}`)
+    if (!res.ok) fail(`${t}: HTTP ${res.status} ${(await res.text()).slice(0, 300)}`)
     const page = await res.json()
     rows.push(...page)
     if (page.length < 1000) break

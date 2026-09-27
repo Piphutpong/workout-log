@@ -174,7 +174,7 @@ workflow `Keep Supabase awake` (`.github/workflows/keepalive.yml`) จะ query 
 
 ### 12.1 สำรองข้อมูลอัตโนมัติ
 workflow `Weekly backup` export JSON ทุกวันจันทร์ 03:00 เก็บเป็น artifact 90 วัน (ไม่ commit ลง repo)
-ต้องเพิ่ม GitHub secret `SUPABASE_SERVICE_ROLE_KEY` = Supabase → Project Settings → API Keys → **Secret key** (หรือ legacy `service_role`)
+ต้องเพิ่ม GitHub secret `SUPABASE_SERVICE_ROLE_KEY` = Supabase → Project Settings → API Keys → **Secret key** (`sb_secret_...` หรือ legacy `service_role`) — ถ้าใส่ผิดรูปแบบ log จะบอกสาเหตุ
 — key นี้ใช้ใน GitHub Actions เท่านั้น ห้ามใส่ในโค้ดหน้าเว็บ · ดาวน์โหลดได้ที่ Actions → Weekly backup → Artifacts
 กู้คืน: เพิ่มเติม → Export / Import → เลือกไฟล์ JSON (ตรวจข้อมูลซ้ำก่อนนำเข้า)
 
@@ -259,7 +259,9 @@ migration `20261001000001_phase2.sql` จะเพิ่มโปรแกรม
 |---|---|
 | `npm run plans:build` | สร้าง `seed_run_plans.json` ใหม่จาก `scripts/build-run-plans.mjs` |
 | `npm run seed:build` | สร้าง `seed.sql` ใหม่จาก JSON |
-| `npm run gen:types` | generate types จากฐานข้อมูลจริง (หลัง `supabase link`) ลง `src/types/supabase.ts` |
+| `npm run gen:types` | generate types จากฐานข้อมูลจริงลง `src/types/supabase.ts` (client ใช้ไฟล์นี้) — `src/types/schema-check.ts` จะฟ้องตอน typecheck ถ้า model ใน `database.ts` ไม่ตรงกับคอลัมน์จริง |
+| `npm run shared:sync` | คัดลอกกฎข้อ 6 (`src/lib/rules.ts`) ไปให้ Edge Function |
+| `npm run functions:deploy` | deploy Edge Function `notify` |
 | `node scripts/gen-icons.mjs` | สร้างไอคอน PWA ใหม่ |
 
 ## เพิ่มตาราง/แก้ schema

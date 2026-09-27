@@ -8,9 +8,10 @@ import type {
 } from '@/types/database'
 import type { TdeeInputs } from './nutritionCalc'
 
-function must<T>(res: { data: T | null; error: { message: string } | null }): T {
+/** คืนข้อมูลเป็น unknown แล้วให้ผู้เรียกระบุชนิด (คอลัมน์ jsonb ใน types ที่ generate เป็น Json) */
+function must(res: { data: unknown; error: { message: string } | null }): unknown {
   if (res.error) throw new Error(res.error.message)
-  return res.data as T
+  return res.data
 }
 
 export const nk = {

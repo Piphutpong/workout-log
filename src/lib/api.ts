@@ -9,9 +9,10 @@ import type {
   RunPlanDay, Settings, Shoe, TodayPlan, WarmupRoutine, WeeklySchedule, WeightProgram, WeightRotation,
 } from '@/types/database'
 
-function must<T>(res: { data: T | null; error: { message: string } | null }): T {
+/** คืนข้อมูลเป็น unknown แล้วให้ผู้เรียกระบุชนิด (คอลัมน์ jsonb ใน types ที่ generate เป็น Json) */
+function must(res: { data: unknown; error: { message: string } | null }): unknown {
   if (res.error) throw new Error(res.error.message)
-  return res.data as T
+  return res.data
 }
 
 export const qk = {
@@ -243,7 +244,7 @@ export function useDayActivity(from: string, to: string) {
 export function useProgressCompare(ref: string | null) {
   return useQuery({
     queryKey: dk.compare(ref),
-    queryFn: async () => must(await supabase.rpc('progress_compare', { p_ref: ref, p_today: todayIso() })) as ProgressCompare,
+    queryFn: async () => must(await supabase.rpc('progress_compare', { p_ref: ref ?? undefined, p_today: todayIso() })) as ProgressCompare,
   })
 }
 

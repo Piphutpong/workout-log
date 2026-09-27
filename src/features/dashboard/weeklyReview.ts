@@ -14,7 +14,7 @@ export function losingWeight(goals: Goal[] | undefined) {
 export async function computeReview(ws: string, losing: boolean) {
   const { data, error } = await supabase.rpc('weekly_review_stats', { p_week_start: ws })
   if (error) throw new Error(error.message)
-  const stats = data as WeeklyReviewStats
+  const stats = data as unknown as WeeklyReviewStats
   const r = evaluateWeek(stats, { losingWeight: losing })
   return { stats, good: r.good.map((m) => m.text), improve: r.improve.map((m) => m.text) }
 }

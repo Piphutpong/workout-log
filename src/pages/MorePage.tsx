@@ -11,6 +11,7 @@ import { rangeWarnings } from '@/lib/validation'
 import { Button, Card, Input, PageTitle, Spinner } from '@/components/ui'
 import { confirmDialog, confirmWarnings, toast } from '@/components/overlay'
 import { NotificationSettings } from './NotificationSettings'
+import { NutritionTargetsCard, ProfileCard, SupplementsCard } from './SettingsCards'
 
 export function MorePage() {
   const qc = useQueryClient()
@@ -74,6 +75,8 @@ export function MorePage() {
         </div>
       </Card>
 
+      <ProfileCard />
+
       <Card title="ตั้งค่า">
         <div className="grid grid-cols-2 gap-3">
           <Input label="MaxHR (bpm)" inputMode="numeric" value={f.max_hr} onChange={set('max_hr')} />
@@ -84,6 +87,8 @@ export function MorePage() {
         <Button className="mt-3" block onClick={save}>บันทึก</Button>
       </Card>
 
+      <NutritionTargetsCard />
+      <SupplementsCard />
       <NotificationSettings />
 
       <Card title="การซิงก์ข้อมูล">

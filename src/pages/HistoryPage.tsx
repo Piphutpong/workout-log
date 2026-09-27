@@ -10,15 +10,15 @@ import { confirmDialog, Modal, toast } from '@/components/overlay'
 import { RUN_TYPE_TH } from '@/features/run/runMeta'
 import { ANGLE_TH, removePhoto, useSignedUrls } from '@/features/body/photos'
 import type {
-  BodyComp, BodyWeight, DailyCheckin, PainLog, ProgressPhoto, Run, TableName, WeightSession, WeightSet,
+  BodyComp, BodyWeight, DailyCheckin, FoodLog, PainLog, ProgressPhoto, Run, TableName, WeightSession, WeightSet,
 } from '@/types/database'
 
-type Kind = 'weight' | 'run' | 'bw' | 'comp' | 'checkin' | 'pain' | 'photo'
+type Kind = 'weight' | 'run' | 'food' | 'bw' | 'comp' | 'checkin' | 'pain' | 'photo'
 const KIND_TH: Record<Kind, string> = {
-  weight: '🏋️ เวท', run: '🏃 วิ่ง', bw: '⚖️ น้ำหนัก', comp: '🧬 Body comp', checkin: '🌅 Check-in', pain: '🩹 อาการเจ็บ', photo: '📷 รูป',
+  weight: '🏋️ เวท', run: '🏃 วิ่ง', food: '🍽 อาหาร', bw: '⚖️ น้ำหนัก', comp: '🧬 Body comp', checkin: '🌅 Check-in', pain: '🩹 อาการเจ็บ', photo: '📷 รูป',
 }
 const TABLE: Record<Kind, TableName> = {
-  weight: 'weight_sessions', run: 'runs', bw: 'body_weight', comp: 'body_comp', checkin: 'daily_checkin', pain: 'pain_log', photo: 'progress_photos',
+  weight: 'weight_sessions', run: 'runs', food: 'food_log', bw: 'body_weight', comp: 'body_comp', checkin: 'daily_checkin', pain: 'pain_log', photo: 'progress_photos',
 }
 
 interface Item { kind: Kind; id: string; date: string; title: string; sub: string; row: Record<string, unknown> }
@@ -33,7 +33,7 @@ function useHistory(days: number) {
     queryKey: [...dk.all, 'history', days],
     queryFn: async () => {
       const from = addDays(todayIso(), -days)
-      const [ws, sets, runs, bw, comp, ck, pain, photos] = await Promise.all([
+      const [ws, sets, runs, bw, comp, ck, pain, photos, food] = await Promise.all([
         supabase.from('weight_sessions').select('*').gte('date', from),
         supabase.from('weight_sets').select('*').gte('date', from).order('set_no'),
         supabase.from('runs').select('*').gte('date', from),
@@ -42,11 +42,12 @@ function useHistory(days: number) {
         supabase.from('daily_checkin').select('*').gte('date', from),
         supabase.from('pain_log').select('*').gte('date', from),
         supabase.from('progress_photos').select('*').gte('date', from),
+        supabase.from('food_log').select('*').gte('date', from).order('created_at'),
       ])
       return {
         sessions: must(ws) as WeightSession[], sets: must(sets) as WeightSet[], runs: must(runs) as Run[],
         bw: must(bw) as BodyWeight[], comp: must(comp) as BodyComp[], checkins: must(ck) as DailyCheckin[],
-        pain: must(pain) as PainLog[], photos: must(photos) as ProgressPhoto[],
+        pain: must(pain) as PainLog[], photos: must(photos) as ProgressPhoto[], food: must(food) as FoodLog[],
       }
     },
   })
@@ -82,6 +83,8 @@ export function HistoryPage() {
       ...d.checkins.map((c) => ({ kind: 'checkin' as const, id: c.id, date: c.date, title: 'Check-in',
         sub: [c.sleep_hours != null && `นอน ${c.sleep_hours} ชม.`, c.energy && `พลังงาน ${c.energy}/5`, c.soreness && `ล้า ${c.soreness}/5`, c.resting_hr && `RHR ${c.resting_hr}`, c.steps && `${c.steps} ก้าว`].filter(Boolean).join(' · '), row: c })),
       ...d.pain.map((p) => ({ kind: 'pain' as const, id: p.id, date: p.date, title: `${p.body_part} ${p.score}/10`, sub: [p.context, p.note].filter(Boolean).join(' · '), row: p })),
+      ...d.food.map((f) => ({ kind: 'food' as const, id: f.id, date: f.date, title: `${f.name ?? 'อาหาร'}${Number(f.servings) !== 1 ? ` ×${Number(f.servings)}` : ''}`,
+        sub: `${f.meal} · ${Math.round(Number(f.calories))} kcal · P ${Number(f.protein_g)} · C ${Number(f.carb_g)} · F ${Number(f.fat_g)}`, row: f })),
       ...d.photos.map((p) => ({ kind: 'photo' as const, id: p.id, date: p.date, title: `รูป${ANGLE_TH[p.angle]}`, sub: p.note ?? '', row: p })),
     ]
     return out.sort((a, b) => b.date.localeCompare(a.date) || a.kind.localeCompare(b.kind))
@@ -182,6 +185,14 @@ const FIELDS: Record<Kind, Field[]> = {
     { k: 'completed', label: 'สถานะ', type: 'select', options: [['full', 'ครบ'], ['partial', 'บางส่วน'], ['skipped', 'ข้าม']] },
     { k: 'temp_c', label: 'อุณหภูมิ °C', type: 'number' },
     { k: 'humidity_pct', label: 'ความชื้น %', type: 'number' },
+    { k: 'note', label: 'โน้ต', type: 'text' },
+  ],
+  food: [
+    { k: 'date', label: 'วันที่', type: 'date' },
+    { k: 'meal', label: 'มื้อ', type: 'select', options: ['เช้า', 'กลางวัน', 'เย็น', 'ว่าง', 'ก่อนออกกำลัง', 'หลังออกกำลัง'].map((m) => [m, m] as [string, string]) },
+    { k: 'name', label: 'ชื่อ', type: 'text' }, { k: 'servings', label: 'จำนวนเสิร์ฟ', type: 'number' },
+    { k: 'calories', label: 'kcal', type: 'number' }, { k: 'protein_g', label: 'โปรตีน (g)', type: 'number' },
+    { k: 'carb_g', label: 'คาร์บ (g)', type: 'number' }, { k: 'fat_g', label: 'ไขมัน (g)', type: 'number' },
     { k: 'note', label: 'โน้ต', type: 'text' },
   ],
   weight: [{ k: 'date', label: 'วันที่', type: 'date' }, { k: 'duration_min', label: 'เวลา (นาที)', type: 'number' }, { k: 'note', label: 'โน้ต', type: 'text' }],
