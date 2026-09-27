@@ -62,6 +62,7 @@ export type Settings = Base & Nullable<{
   notify_email: boolean
   notify_weekly: boolean
   notify_push: boolean
+  nutrition_mode: 'cut' | 'maintenance'
 }
 
 export type Goal = Base & {
@@ -329,6 +330,20 @@ export type NutritionTarget = Base & {
   fat_g: number
 }
 
+export type TdeeProposal = Base & {
+  week_start: string
+  mode: 'cut' | 'maintenance'
+  tdee: number | null
+  avg_kcal: number | null
+  weight_change_kg: number | null
+  window_days: number | null
+  days_logged: number | null
+  current_avg_target: number | null
+  proposed_delta: number | null
+  status: 'pending' | 'accepted' | 'dismissed' | 'insufficient'
+}
+export type FoodUsage = { user_id: string; food_id: string | null; recipe_id: string | null; uses: number; last_used: string; last_at: string }
+
 export type WeeklyReview = Base & {
   week_start: string
   good: string[]
@@ -556,7 +571,7 @@ type DefaultedKeys =
   | 'notify_push' | 'start_date' | 'status' | 'sort_order' | 'measure_type' | 'grip_intensive' | 'active' | 'color'
   | 'is_warmup' | 'target_sets' | 'is_deload' | 'segments' | 'items' | 'add_strides' | 'add_weights' | 'day_offset'
   | 'start_km' | 'retire_km' | 'completed' | 'source' | 'pace_sec_per_km' | 'pinned' | 'calories' | 'protein_g'
-  | 'carb_g' | 'fat_g' | 'is_estimate' | 'is_favorite' | 'servings' | 'taken' | 'good' | 'improve'
+  | 'carb_g' | 'fat_g' | 'is_estimate' | 'is_favorite' | 'servings' | 'taken' | 'good' | 'improve' | 'nutrition_mode'
 
 export interface Database {
   public: {
@@ -594,6 +609,7 @@ export interface Database {
       supplement_log: Opt<SupplementLog>
       nutrition_targets: Opt<NutritionTarget>
       weekly_reviews: Opt<WeeklyReview>
+      tdee_proposals: Opt<TdeeProposal>
     }
     Views: {
       last_performance: View<LastPerformance>
@@ -605,6 +621,7 @@ export interface Database {
       pr_events: View<PrEvent>
       run_pr_events: View<RunPrEvent>
       weekly_training: View<WeeklyTraining>
+      food_usage: View<FoodUsage>
     }
     Functions: {
       today_plan: { Args: { p_date?: string }; Returns: TodayPlan }
@@ -617,6 +634,7 @@ export interface Database {
       achievements: { Args: { p_today?: string }; Returns: Achievement[] }
       personal_records: { Args: Record<string, never>; Returns: PersonalRecords }
       weekly_review_stats: { Args: { p_week_start: string }; Returns: WeeklyReviewStats }
+      tdee_inputs: { Args: { p_end?: string }; Returns: import('@/features/nutrition/nutritionCalc').TdeeInputs }
     }
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>

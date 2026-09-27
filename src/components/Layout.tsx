@@ -6,6 +6,7 @@ import { cx, Spinner } from './ui'
 const NAV = [
   { to: '/', label: 'ภาพรวม', icon: '📊', end: true },
   { to: '/today', label: 'วันนี้', icon: '📋' },
+  { to: '/nutrition', label: 'อาหาร', icon: '🍽' },
   { to: '/workout', label: 'เวท', icon: '🏋️' },
   { to: '/run', label: 'วิ่ง', icon: '🏃' },
   { to: '/more', label: 'เพิ่มเติม', icon: '☰' },
@@ -44,7 +45,7 @@ export function Layout() {
         </Suspense>
       </main>
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
-        <div className="mx-auto grid max-w-2xl grid-cols-5">
+        <div className="mx-auto grid max-w-2xl grid-cols-6">
           {NAV.map((n) => (
             <NavLink
               key={n.to}

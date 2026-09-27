@@ -24,6 +24,9 @@ const ProgressPage = lazy(() => import('@/features/dashboard/ProgressPage').then
 const GoalsPage = lazy(() => import('@/features/goals/GoalsPage').then((m) => ({ default: m.GoalsPage })))
 const BodyPage = lazy(() => import('@/features/body/BodyPage').then((m) => ({ default: m.BodyPage })))
 const HistoryPage = lazy(() => import('@/pages/HistoryPage').then((m) => ({ default: m.HistoryPage })))
+const NutritionPage = lazy(() => import('@/features/nutrition/NutritionPage').then((m) => ({ default: m.NutritionPage })))
+const FoodsPage = lazy(() => import('@/features/nutrition/FoodsPage').then((m) => ({ default: m.FoodsPage })))
+const RecipesPage = lazy(() => import('@/features/nutrition/RecipesPage').then((m) => ({ default: m.RecipesPage })))
 const MorePage = lazy(() => import('@/pages/MorePage').then((m) => ({ default: m.MorePage })))
 
 function Gate() {
@@ -72,6 +75,9 @@ function SignedIn() {
         <Route path="progress" element={<ProgressPage />} />
         <Route path="body" element={<BodyPage />} />
         <Route path="history" element={<HistoryPage />} />
+        <Route path="nutrition" element={<NutritionPage />} />
+        <Route path="nutrition/foods" element={<FoodsPage />} />
+        <Route path="nutrition/recipes" element={<RecipesPage />} />
         <Route path="workout" element={<WorkoutLogPage />} />
         <Route path="workout/programs" element={<ProgramsPage />} />
         <Route path="workout/programs/:id" element={<ProgramEditorPage />} />

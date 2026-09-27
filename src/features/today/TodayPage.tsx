@@ -12,6 +12,7 @@ import { WORKOUT_TH, isHardRun } from '@/features/run/runMeta'
 import { BodyWeightCard } from './BodyWeightCard'
 import { CheckinCard } from './CheckinCard'
 import { WeekMini } from './WeekMini'
+import { NutritionMini } from './NutritionMini'
 import { WarmupChecklist } from './WarmupChecklist'
 
 const ACTIVITY_ICON = { weight: '🏋️', run: '🏃', rest: '😴', active_recovery: '🧘' } as const
@@ -153,6 +154,7 @@ export function TodayPage() {
       {isRunDay && !runToday && <WarmupChecklist type={isHardRun(p.workout_type) ? 'run_hard' : 'run_easy'} date={today} />}
 
       <BodyWeightCard />
+      <NutritionMini />
       <CheckinCard />
       <WeekMini />
     </div>

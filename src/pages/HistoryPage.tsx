@@ -265,8 +265,15 @@ function EditModal({ item, sets, exName, onClose, onDelete }: {
 
   const grouped = new Map<string, typeof setVals_>()
   for (const s of setVals_) grouped.set(s.exercise_id, [...(grouped.get(s.exercise_id) ?? []), s])
-  const updSet = (id: string, k: 'weight_lb' | 'reps' | 'seconds', v: string) =>
-    setSetVals(setVals_.map((s) => (s.id === id ? { ...s, [k]: v.trim() === '' ? null : Number(v) } : s)))
+  // เก็บข้อความที่พิมพ์ไว้ เพื่อให้พิมพ์ทศนิยม (เช่น 12.5) ได้
+  const [raw, setRaw] = useState<Record<string, string>>({})
+  const updSet = (id: string, k: 'weight_lb' | 'reps' | 'seconds', v: string) => {
+    const t = v.replace(',', '.')
+    if (t !== '' && !/^\d*\.?\d*$/.test(t)) return
+    setRaw({ ...raw, [`${id}:${k}`]: t })
+    setSetVals(setVals_.map((s) => (s.id === id ? { ...s, [k]: t === '' || t === '.' ? null : Number(t) } : s)))
+  }
+  const shown = (id: string, k: 'weight_lb' | 'reps' | 'seconds', v: number | null) => raw[`${id}:${k}`] ?? (v ?? '')
 
   return (
     <Modal
@@ -303,10 +310,10 @@ function EditModal({ item, sets, exName, onClose, onDelete }: {
                 <div key={s.id} className="mt-1 flex items-center gap-2">
                   <span className="w-5 text-sm text-slate-400">{s.set_no}</span>
                   <input className="min-h-10 w-20 rounded-lg border border-slate-300 bg-white px-2 text-center dark:border-slate-700 dark:bg-slate-950" inputMode="decimal"
-                    value={s.weight_lb ?? ''} placeholder="lb" onChange={(e) => updSet(s.id, 'weight_lb', e.target.value)} />
+                    value={shown(s.id, 'weight_lb', s.weight_lb)} placeholder="lb" onChange={(e) => updSet(s.id, 'weight_lb', e.target.value)} />
                   <span className="text-sm text-slate-400">×</span>
                   <input className="min-h-10 w-16 rounded-lg border border-slate-300 bg-white px-2 text-center dark:border-slate-700 dark:bg-slate-950" inputMode="numeric"
-                    value={(s.seconds ?? s.reps) ?? ''} placeholder={s.seconds != null ? 'วิ' : 'ครั้ง'}
+                    value={s.seconds != null ? shown(s.id, 'seconds', s.seconds) : shown(s.id, 'reps', s.reps)} placeholder={s.seconds != null ? 'วิ' : 'ครั้ง'}
                     onChange={(e) => updSet(s.id, s.seconds != null ? 'seconds' : 'reps', e.target.value)} />
                   {s.band_level && <span className="text-sm">ยาง{s.band_level}</span>}
                   <button type="button" className="ml-auto p-2 text-slate-400" onClick={() => void deleteSet(s.id)} aria-label="ลบเซ็ต">✕</button>

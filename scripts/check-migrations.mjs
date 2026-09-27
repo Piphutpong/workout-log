@@ -205,6 +205,22 @@ assert.equal(st.prs, 1)
 console.log('✓ achievements, day_activity, weekly_review_stats', JSON.stringify({ sleep: st.low_sleep_streak, weeks: st.training_weeks_no_deload }))
 await db.query(`insert into weekly_reviews (week_start, good, improve, stats) values ('2026-10-05', '["a"]', '["b"]', $1)`, [st])
 
+// ---- Phase 3 ----------------------------------------------------------------
+const foods = await one(`select count(*)::int n, count(*) filter (where is_estimate)::int est, count(*) filter (where is_favorite)::int fav from foods where source = 'seed'`)
+assert.equal(foods.n, 95)
+assert.equal(foods.est, 95)
+const egg = (await one(`select id, calories from foods where name = 'ไข่ต้ม'`))
+await db.query(`insert into food_log (date, meal, food_id, servings, calories, protein_g, carb_g, fat_g) values
+  ('2026-10-06', 'เช้า', $1, 2, 144, 12.6, 0.8, 9.6), ('2026-10-07', 'เช้า', $1, 1, 72, 6.3, 0.4, 4.8)`, [egg.id])
+const usage = await one(`select uses::int, last_used from food_usage where food_id = $1`, [egg.id])
+assert.equal(usage.uses, 2)
+const ti = (await one(`select public.tdee_inputs('2026-10-07') as r`)).r
+assert.equal(ti.w14.days_logged, 3)
+assert.ok(ti.current_avg_target >= 2250 && ti.current_avg_target <= 2650, `avg target ${ti.current_avg_target}`)
+assert.equal(ti.mode, 'cut')
+await db.exec(`insert into tdee_proposals (week_start, mode, tdee, proposed_delta) values ('2026-10-05', 'cut', 2600, -100)`)
+console.log('✓ foods seed', foods, '· tdee_inputs', JSON.stringify(ti.w14), 'target', ti.current_avg_target)
+
 // ---- RLS ------------------------------------------------------------------
 await as(U2)
 assert.equal((await one(`select count(*)::int n from settings`)).n, 0)
@@ -212,6 +228,8 @@ assert.equal((await one(`select count(*)::int n from weight_sets`)).n, 0)
 assert.equal((await one(`select count(*)::int n from goal_progress`)).n, 0)
 assert.equal((await one(`select count(*)::int n from weekly_reviews`)).n, 0)
 assert.equal((await one(`select count(*)::int n from pr_events`)).n, 0)
+assert.equal((await one(`select count(*)::int n from foods`)).n, 0)
+assert.equal((await one(`select count(*)::int n from tdee_proposals`)).n, 0)
 assert.equal((await one(`select count(*)::int n from run_plans where user_id is null`)).n, 5)
 await assert.rejects(db.query(`insert into body_weight (user_id, date, weight_kg) values ($1, '2026-10-01', 70)`, [U1]))
 await assert.rejects(db.query(`update run_plan_days set title = 'hack' where day_no = 1 returning id`).then((r) => {

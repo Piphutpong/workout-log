@@ -57,6 +57,8 @@ export function MorePage() {
 
       <Card title="ทางลัด">
         <div className="grid grid-cols-2 gap-2">
+          <Link to="/nutrition/foods"><Button block variant="secondary">🥗 คลังอาหาร</Button></Link>
+          <Link to="/nutrition/recipes"><Button block variant="secondary">🍱 สูตรอาหาร</Button></Link>
           <Link to="/goals"><Button block variant="secondary">🎯 เป้าหมาย</Button></Link>
           <Link to="/progress"><Button block variant="secondary">📈 ความก้าวหน้า</Button></Link>
           <Link to="/body"><Button block variant="secondary">🧬 ร่างกาย</Button></Link>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { invalidateDash, qk, useBodyWeights } from '@/lib/api'
 import { addDays, fmtDate, todayIso } from '@/lib/date'
@@ -22,9 +22,13 @@ export function BodyWeightCard() {
   const [value, setValue] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
 
+  // เติมค่าเริ่มต้นครั้งเดียว (ไม่งั้นลบช่องให้ว่างแล้วจะถูกเติมกลับทันที)
+  const filled = useRef(false)
   useEffect(() => {
-    if (value == null && (todayRow || last)) setValue(Number((todayRow ?? last)!.weight_kg))
-  }, [todayRow, last, value])
+    if (filled.current || !(todayRow || last)) return
+    filled.current = true
+    setValue(Number((todayRow ?? last)!.weight_kg))
+  }, [todayRow, last])
 
   const avg7 = avg(rows, addDays(today, -6), today)
   const avgPrev = avg(rows, addDays(today, -13), addDays(today, -7))

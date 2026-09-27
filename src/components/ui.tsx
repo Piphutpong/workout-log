@@ -1,4 +1,4 @@
-import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react'
+import { forwardRef, useEffect, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react'
 
 export function cx(...c: (string | false | null | undefined)[]) {
   return c.filter(Boolean).join(' ')
@@ -140,30 +140,44 @@ export function Stepper({
   compact?: boolean
 }) {
   const clamp = (v: number) => Math.min(max, Math.max(min, Math.round(v * 10 ** decimals) / 10 ** decimals))
+  // ข้อความที่กำลังพิมพ์ (เก็บไว้ระหว่างพิมพ์ เพื่อให้พิมพ์ "12." ต่อเป็น "12.5" ได้)
+  const [text, setText] = useState<string | null>(null)
+  // ค่าถูกเปลี่ยนจากภายนอก (เช่น ปุ่ม +2.5lb ทุกเซ็ต) → ทิ้งข้อความที่พิมพ์ค้างไว้
+  useEffect(() => {
+    setText((t) => (t == null || (t === '' || t === '.' ? value === null : Number(t) === value) ? t : null))
+  }, [value])
+  const bump = (d: number) => {
+    setText(null)
+    onChange(clamp((value ?? 0) + d))
+  }
   const btn = cx(
     'shrink-0 rounded-xl bg-slate-200 font-bold active:bg-slate-300 dark:bg-slate-700 dark:active:bg-slate-600',
     compact ? 'size-10 text-xl' : 'size-12 text-2xl',
   )
   return (
     <div className={cx('flex items-center gap-1', className)}>
-      <button type="button" className={btn} onClick={() => onChange(clamp((value ?? 0) - step))} aria-label="ลด">
+      <button type="button" className={btn} onClick={() => bump(-step)} aria-label="ลด">
         −
       </button>
       <div className="relative min-w-0 flex-1">
         <input
           inputMode="decimal"
           className={cx(inputCls, 'text-center font-semibold tabular-nums', compact ? 'min-h-10 px-1' : 'text-lg')}
-          value={value ?? ''}
+          value={text ?? (value ?? '')}
+          onFocus={(e) => e.target.select()}
+          onBlur={() => setText(null)}
           onChange={(e) => {
             const t = e.target.value.replace(',', '.')
-            if (t === '') return onChange(null)
+            if (t !== '' && !/^\d*\.?\d*$/.test(t)) return
+            setText(t)
+            if (t === '' || t === '.') return onChange(null)
             const n = Number(t)
             if (!Number.isNaN(n)) onChange(n)
           }}
         />
         {suffix && <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs text-slate-400">{suffix}</span>}
       </div>
-      <button type="button" className={btn} onClick={() => onChange(clamp((value ?? 0) + step))} aria-label="เพิ่ม">
+      <button type="button" className={btn} onClick={() => bump(step)} aria-label="เพิ่ม">
         +
       </button>
     </div>
