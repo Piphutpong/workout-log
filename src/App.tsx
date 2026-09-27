@@ -29,6 +29,7 @@ const FoodsPage = lazy(() => import('@/features/nutrition/FoodsPage').then((m) =
 const RecipesPage = lazy(() => import('@/features/nutrition/RecipesPage').then((m) => ({ default: m.RecipesPage })))
 const ShoesPage = lazy(() => import('@/features/run/ShoesPage').then((m) => ({ default: m.ShoesPage })))
 const ExercisesPage = lazy(() => import('@/features/workout/ExercisesPage').then((m) => ({ default: m.ExercisesPage })))
+const DataPage = lazy(() => import('@/pages/DataPage').then((m) => ({ default: m.DataPage })))
 const MorePage = lazy(() => import('@/pages/MorePage').then((m) => ({ default: m.MorePage })))
 
 function Gate() {
@@ -89,6 +90,7 @@ function SignedIn() {
         <Route path="plans/:id" element={<PlanDetailPage />} />
         <Route path="more" element={<MorePage />} />
         <Route path="more/shoes" element={<ShoesPage />} />
+        <Route path="more/data" element={<DataPage />} />
         <Route path="more/exercises" element={<ExercisesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

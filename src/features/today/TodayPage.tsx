@@ -13,6 +13,7 @@ import { BodyWeightCard } from './BodyWeightCard'
 import { CheckinCard } from './CheckinCard'
 import { WeekMini } from './WeekMini'
 import { NutritionMini } from './NutritionMini'
+import { AlertsCard } from './AlertsCard'
 import { WarmupChecklist } from './WarmupChecklist'
 
 const ACTIVITY_ICON = { weight: '🏋️', run: '🏃', rest: '😴', active_recovery: '🧘' } as const
@@ -153,6 +154,7 @@ export function TodayPage() {
       {wantsWeights && !liftToday && <WarmupChecklist type="weight" date={today} />}
       {isRunDay && !runToday && <WarmupChecklist type={isHardRun(p.workout_type) ? 'run_hard' : 'run_easy'} date={today} />}
 
+      <AlertsCard />
       <BodyWeightCard />
       <NutritionMini />
       <CheckinCard />

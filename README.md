@@ -12,7 +12,8 @@
 >   สรุปรายสัปดาห์ตามกฎข้อ 6, PR/Achievements, โปรแกรม "กระชับกล้ามเนื้อ (นายแบบ)" 3 วันจากหนังสือ
 > - Phase 3 ✅ คลังอาหารไทย 95 รายการ (ค่าประมาณ), บันทึกอาหาร ≤ 3 แตะ, เหมือนเมื่อวาน/meal template/Quick add,
 >   สแกนบาร์โค้ด (Open Food Facts), สูตรอาหาร, เป้าตามประเภทวัน, คำแนะนำตามส่วนที่ขาด, น้ำ, อาหารเสริม, Adaptive TDEE, กราฟโภชนาการ
-> - Phase 4 (รองเท้า, สภาพอากาศ, import ไฟล์วิ่ง, deload, อีเมล, Web Push, export/backup) — ยังไม่ได้ทำ
+> - Phase 4 ✅ รองเท้า (เตือน 90%), อุณหภูมิ/ความชื้นจาก Open-Meteo, import .gpx/.fit/.tcx พร้อม splits, deload, แก้ warm-up,
+>   คลังท่า, แจ้งเตือนตามกฎข้อ 6, อีเมล (Resend) + Web Push ผ่าน Edge Function + pg_cron, Export JSON/CSV, Import JSON, backup รายสัปดาห์
 
 ---
 
@@ -150,8 +151,32 @@ anon key ถูกฝังในเว็บอยู่แล้วโดย�
 workflow `Keep Supabase awake` (`.github/workflows/keepalive.yml`) จะ query ฐานข้อมูลทุก 3 วันอัตโนมัติ ใช้ secrets ชุดเดียวกัน
 ทดสอบได้ที่ **Actions → Keep Supabase awake → Run workflow**
 
-### 12. อีเมลแจ้งเตือน (Edge Function)
-จะทำใน Phase 4 (Supabase Edge Function + pg_cron)
+### 12. การแจ้งเตือน (Edge Function + pg_cron)
+ระบบ: `pg_cron` เรียก Edge Function `notify` ทุก 15 นาที → ส่งตามเวลาที่ตั้งในแอป (เพิ่มเติม → การแจ้งเตือน)
+- เช้า: ชั่งน้ำหนัก + แผนวันนี้ · ค่ำ: ยังไม่บันทึกอาหาร/ออกกำลังกาย/น้ำหนัก (ถ้าครบแล้วไม่ส่ง) · วันจันทร์เช้า: สรุปรายสัปดาห์
+
+**ตั้งค่าครั้งแรก** (ทำให้แล้วสำหรับโปรเจกต์นี้ ยกเว้นข้อ 3):
+1. Secrets ของ function:
+   ```powershell
+   npx supabase secrets set NOTIFY_SECRET=<สุ่มยาวๆ> VAPID_PUBLIC_KEY=<...> VAPID_PRIVATE_KEY=<...> VAPID_SUBJECT=https://<user>.github.io/workout-log/ APP_URL=https://<user>.github.io/workout-log/
+   npm run functions:deploy
+   ```
+   (สร้าง VAPID ด้วย `npx web-push generate-vapid-keys` แล้วใส่ public key ใน `src/lib/push.ts`)
+2. รัน `supabase/setup_cron.sql` ใน SQL Editor (แทน `<NOTIFY_SECRET>` และ `<PROJECT_REF>` ก่อน)
+3. **อีเมล:** สมัคร https://resend.com (ฟรี 3,000 ฉบับ/เดือน) ด้วย**อีเมลเดียวกับที่ล็อกอินแอป** → API Keys → Create →
+   ```powershell
+   npx supabase secrets set RESEND_API_KEY=re_xxxxxxxx
+   ```
+   ผู้ส่งเริ่มต้นคือ `onboarding@resend.dev` ซึ่งส่งได้เฉพาะอีเมลเจ้าของบัญชี Resend (พอสำหรับใช้คนเดียว)
+4. ในแอป: เพิ่มเติม → การแจ้งเตือน → เปิดอีเมล/Web Push → กด "ทดสอบเช้า"
+
+**Web Push:** Android/คอมเปิดได้เลย · iPhone ต้องติดตั้งลงหน้าจอโฮมก่อน (iOS 16.4+) แล้วเปิดจากไอคอนบนหน้าจอโฮม
+
+### 12.1 สำรองข้อมูลอัตโนมัติ
+workflow `Weekly backup` export JSON ทุกวันจันทร์ 03:00 เก็บเป็น artifact 90 วัน (ไม่ commit ลง repo)
+ต้องเพิ่ม GitHub secret `SUPABASE_SERVICE_ROLE_KEY` = Supabase → Project Settings → API Keys → **Secret key** (หรือ legacy `service_role`)
+— key นี้ใช้ใน GitHub Actions เท่านั้น ห้ามใส่ในโค้ดหน้าเว็บ · ดาวน์โหลดได้ที่ Actions → Weekly backup → Artifacts
+กู้คืน: เพิ่มเติม → Export / Import → เลือกไฟล์ JSON (ตรวจข้อมูลซ้ำก่อนนำเข้า)
 
 ### 13. ติดตั้งเป็นแอปบนมือถือ (PWA)
 **iPhone (Safari เท่านั้น):** เปิดเว็บ → ปุ่ม **แชร์** (สี่เหลี่ยมมีลูกศรขึ้น) → **เพิ่มไปยังหน้าจอโฮม** → เพิ่ม
@@ -214,6 +239,17 @@ migration `20261001000001_phase2.sql` จะเพิ่มโปรแกรม
 7. **Adaptive TDEE** → ต้องบันทึกอาหาร ≥ 10 จาก 14 วัน + น้ำหนัก ไม่งั้นขึ้น "ข้อมูลไม่พอ" · สัปดาห์ใหม่จะเสนอปรับ kcal (ต้องกด "ยืนยันปรับ" เท่านั้น)
 8. **น้ำ** +250/+500 และ **อาหารเสริม** ติ๊กรายวัน (มีบนหน้าวันนี้ด้วย)
 9. รายการอาหารที่ค่าอาจคลาดเคลื่อนมาก: `supabase/FOODS_REVIEW.md`
+
+### ทดสอบด้วยมือ (Phase 4)
+1. **รองเท้า** (เพิ่มเติม → 👟 รองเท้า หรือลิงก์ใต้ช่องรองเท้าในหน้าวิ่ง) → เพิ่มรองเท้า ตั้งระยะเดิม 650 กม. → บันทึกวิ่งด้วยรองเท้านั้น → ขึ้นเตือน "ใกล้ถึงระยะเปลี่ยน"
+2. **สภาพอากาศ** → เปิดหน้าบันทึกวิ่ง อุณหภูมิ/ความชื้นเติมเองจาก Open-Meteo (📍 = ใช้ตำแหน่งปัจจุบัน, ↻ = ดึงใหม่) แก้เองได้
+3. **Import** → "📂 Import ไฟล์" เลือก .gpx/.fit/.tcx จาก Garmin/Strava/Coros → เติมระยะ เวลา HR และแสดง splits รายกม. → บันทึก · import ไฟล์เดิมซ้ำจะเตือน
+4. **Deload** → หน้าเวท กด "เริ่ม" ที่แถบ deload → น้ำหนักเหลือ 60% และ 2 เซ็ตถึงวันอาทิตย์นี้ (session บันทึกเป็น deload)
+5. **Warm-up** → จัดการโปรแกรม → 🔥 Warm-up routine แก้รายการ → หน้าวันนี้แสดงตามนั้น
+6. **หุบ/กางท่า** → หน้าเวทเปิดเฉพาะท่าแรก ติ๊กครบทุกเซ็ตแล้วหุบเองและเปิดท่าถัดไป (superset กางคู่กัน)
+7. **แจ้งเตือนในแอป** → หน้าวันนี้มีการ์ด 🔔 เมื่อเข้ากฎข้อ 6 (เช่น เจ็บ ≥ 4 ติดกัน 3 ครั้ง, วิ่งเพิ่มเกิน 10%)
+8. **อีเมล/Push** → เพิ่มเติม → การแจ้งเตือน → เปิด → "ทดสอบเช้า/ค่ำ/สรุป"
+9. **Export/Import** → เพิ่มเติม → 💾 → JSON / CSV (zip เปิดใน Excel) → Import ไฟล์ JSON เดิม → ทุกแถวขึ้นว่า "ซ้ำ (ข้าม)"
 
 ---
 

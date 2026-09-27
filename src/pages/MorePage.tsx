@@ -10,6 +10,7 @@ import { useSyncQueue } from '@/lib/offline/useSync'
 import { rangeWarnings } from '@/lib/validation'
 import { Button, Card, Input, PageTitle, Spinner } from '@/components/ui'
 import { confirmDialog, confirmWarnings, toast } from '@/components/overlay'
+import { NotificationSettings } from './NotificationSettings'
 
 export function MorePage() {
   const qc = useQueryClient()
@@ -57,6 +58,7 @@ export function MorePage() {
 
       <Card title="ทางลัด">
         <div className="grid grid-cols-2 gap-2">
+          <Link to="/more/data"><Button block variant="secondary">💾 Export / Import</Button></Link>
           <Link to="/more/shoes"><Button block variant="secondary">👟 รองเท้า</Button></Link>
           <Link to="/more/exercises"><Button block variant="secondary">📚 คลังท่า</Button></Link>
           <Link to="/nutrition/foods"><Button block variant="secondary">🥗 คลังอาหาร</Button></Link>
@@ -81,6 +83,8 @@ export function MorePage() {
         </div>
         <Button className="mt-3" block onClick={save}>บันทึก</Button>
       </Card>
+
+      <NotificationSettings />
 
       <Card title="การซิงก์ข้อมูล">
         <p>{sync.online ? '🟢 ออนไลน์' : '⚪ ออฟไลน์'} · รอส่ง {sync.pending} รายการ</p>
