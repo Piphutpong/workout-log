@@ -1,0 +1,209 @@
+import { useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
+import { qk, useActiveEnrollment, useRunPlans, useSettings } from '@/lib/api'
+import { hrZonesBpm, planDayNo } from '@/lib/calc'
+import { fmtDate, todayIso } from '@/lib/date'
+import { updateRows, upsertRows } from '@/lib/offline/queue'
+import { Badge, Button, Card, ErrorBox, Input, PageTitle, Spinner } from '@/components/ui'
+import { confirmDialog, Modal, toast } from '@/components/overlay'
+import type { RunPlan } from '@/types/database'
+import { parsePlanFile, savePlanAsMine } from './planIo'
+
+export function RunPlansPage() {
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+  const plans = useRunPlans()
+  const enrollment = useActiveEnrollment()
+  const settings = useSettings()
+  const [enrolling, setEnrolling] = useState<RunPlan | null>(null)
+  const [importError, setImportError] = useState<unknown>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  if (plans.isLoading || enrollment.isLoading) return <Spinner />
+  const active = enrollment.data?.active
+  const activePlan = plans.data?.find((p) => p.id === active?.plan_id)
+  const dayNo = active ? planDayNo(todayIso(), active.start_date, active.day_offset) : 0
+  const refresh = () => Promise.all([
+    qc.invalidateQueries({ queryKey: qk.enrollment }),
+    qc.invalidateQueries({ queryKey: ['today_plan'] }),
+    qc.invalidateQueries({ queryKey: qk.runPlans }),
+  ])
+
+  const setStatus = async (status: 'active' | 'paused' | 'done') => {
+    if (!active) return
+    if (status === 'done' && !(await confirmDialog('เลิกใช้แผนนี้? (กลับไปใช้ตารางประจำสัปดาห์)', { danger: true, okText: 'เลิกแผน' }))) return
+    await updateRows('plan_enrollments', [active.id], { status })
+    await refresh()
+  }
+
+  const onImport = async (file: File) => {
+    setImportError(null)
+    try {
+      const parsed = parsePlanFile(await file.text())
+      const mine = (plans.data ?? []).filter((p) => p.user_id)
+      for (const p of parsed) {
+        const dup = mine.find((m) => m.name === p.name && m.total_days === p.total_days)
+        if (dup && !(await confirmDialog(`มีแผน "${p.name}" อยู่แล้ว นำเข้าเป็นแผนใหม่ซ้ำอีกชุด?`))) continue
+        await savePlanAsMine(p, dup ? `${p.name} (นำเข้า)` : p.name)
+      }
+      await refresh()
+      toast(`นำเข้า ${parsed.length} แผนแล้ว`)
+    } catch (e) {
+      setImportError(e)
+    }
+  }
+
+  const system = (plans.data ?? []).filter((p) => !p.user_id)
+  const mine = (plans.data ?? []).filter((p) => p.user_id)
+
+  return (
+    <div className="space-y-4">
+      <PageTitle>แผนวิ่ง</PageTitle>
+
+      {active && activePlan ? (
+        <Card title="🏁 แผนที่กำลังทำ">
+          <Link to={`/plans/${activePlan.id}`} className="block">
+            <div className="text-xl font-bold">{activePlan.name}</div>
+            <div className="text-sm text-slate-500">
+              เริ่ม {fmtDate(active.start_date)}{active.day_offset ? ` · เลื่อนแล้ว ${active.day_offset} วัน` : ''}
+              {active.status === 'paused' && ' · หยุดชั่วคราว'}
+            </div>
+            <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+              <div className="h-full bg-blue-600" style={{ width: `${Math.min(100, Math.max(0, (dayNo / activePlan.total_days) * 100))}%` }} />
+            </div>
+            <div className="mt-1 text-sm">
+              {dayNo < 1 ? `เริ่มอีก ${1 - dayNo} วัน` : dayNo > activePlan.total_days ? 'จบแผนแล้ว 🎉' : `วันที่ ${dayNo}/${activePlan.total_days}`}
+            </div>
+          </Link>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <Link to={`/plans/${activePlan.id}`}><Button block size="sm" variant="secondary">ปฏิทิน</Button></Link>
+            <Button size="sm" variant="secondary" onClick={() => void setStatus('paused')}>หยุดชั่วคราว</Button>
+            <Button size="sm" variant="ghost" onClick={() => void setStatus('done')}>เลิกแผน</Button>
+          </div>
+        </Card>
+      ) : (
+        enrollment.data?.all.find((e) => e.status === 'paused') && (
+          <Card>
+            <p>มีแผนที่หยุดไว้</p>
+            <Button className="mt-2" onClick={async () => {
+              const paused = enrollment.data!.all.find((e) => e.status === 'paused')!
+              await updateRows('plan_enrollments', [paused.id], { status: 'active' })
+              await refresh()
+            }}>ทำต่อ</Button>
+          </Card>
+        )
+      )}
+
+      <Card title="แผน FASTBULL RUN">
+        <PlanList plans={system} activeId={active?.plan_id} onEnroll={setEnrolling} />
+        <p className="mt-2 text-xs text-slate-500">
+          Begin = มือใหม่ (5K ภายใน 45 นาที / 10K 1:00-1:30 ชม. / 21K มากกว่า 2 ชม.) · Performance = ต้องการทำเวลา (10K &lt; 50 นาที / 21K &lt; 1:45-2:00 ชม.)
+        </p>
+      </Card>
+
+      <Card
+        title="แผนของฉัน"
+        action={<Button size="sm" variant="secondary" onClick={() => fileRef.current?.click()}>นำเข้า JSON</Button>}
+      >
+        <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) void onImport(f)
+          e.target.value = ''
+        }} />
+        <ErrorBox error={importError} />
+        {mine.length ? <PlanList plans={mine} activeId={active?.plan_id} onEnroll={setEnrolling} /> : (
+          <p className="text-sm text-slate-500">คัดลอกแผนจาก FASTBULL แล้วแก้รายวันได้ หรือนำเข้าไฟล์ JSON</p>
+        )}
+      </Card>
+
+      <ZoneTable maxHr={settings.data?.max_hr ?? 186} />
+
+      {enrolling && (
+        <EnrollModal
+          plan={enrolling}
+          hasActive={Boolean(active)}
+          onClose={() => setEnrolling(null)}
+          onDone={async (startDate) => {
+            if (active) await updateRows('plan_enrollments', [active.id], { status: 'done' })
+            await upsertRows('plan_enrollments', [{ plan_id: enrolling.id, start_date: startDate, status: 'active', day_offset: 0 }])
+            await refresh()
+            setEnrolling(null)
+            toast(`เริ่มแผน ${enrolling.name} แล้ว`)
+            navigate(`/plans/${enrolling.id}`)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function PlanList({ plans, activeId, onEnroll }: { plans: RunPlan[]; activeId?: string; onEnroll: (p: RunPlan) => void }) {
+  return (
+    <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+      {plans.map((p) => (
+        <li key={p.id} className="flex items-center gap-2 py-2">
+          <Link to={`/plans/${p.id}`} className="min-w-0 flex-1">
+            <div className="font-semibold">
+              {p.name} {p.id === activeId && <Badge color="blue">กำลังทำ</Badge>}
+            </div>
+            <div className="text-sm text-slate-500">
+              <Badge color={p.level === 'begin' ? 'green' : 'amber'}>{p.level === 'begin' ? 'Begin' : 'Performance'}</Badge>{' '}
+              {p.total_days} วัน{p.goal_distance_km ? ` · ${p.goal_distance_km} กม.` : ''}
+            </div>
+          </Link>
+          {p.id !== activeId && <Button size="sm" onClick={() => onEnroll(p)}>เริ่มแผน</Button>}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function EnrollModal({ plan, hasActive, onClose, onDone }: {
+  plan: RunPlan
+  hasActive: boolean
+  onClose: () => void
+  onDone: (startDate: string) => Promise<void>
+}) {
+  const [date, setDate] = useState(todayIso())
+  const [busy, setBusy] = useState(false)
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`เริ่มแผน ${plan.name}`}
+      footer={<>
+        <Button variant="secondary" block onClick={onClose}>ยกเลิก</Button>
+        <Button block disabled={busy} onClick={async () => {
+          setBusy(true)
+          try { await onDone(date) } finally { setBusy(false) }
+        }}>เริ่ม</Button>
+      </>}
+    >
+      <Input label="วันเริ่ม (Day 1)" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      <p className="mt-2 text-sm text-slate-500">{plan.total_days} วัน · ระหว่างแผน หน้า "วันนี้" จะใช้ตารางจากแผนแทนตารางประจำสัปดาห์</p>
+      {hasActive && <p className="mt-2 text-sm text-amber-600">แผนที่กำลังทำอยู่จะถูกปิด (status = done)</p>}
+    </Modal>
+  )
+}
+
+export function ZoneTable({ maxHr }: { maxHr: number }) {
+  return (
+    <Card title={`❤️ Zone ชีพจร (MaxHR ${maxHr})`}>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-slate-500"><th className="py-1">Zone</th><th>%MaxHR</th><th className="text-right">bpm</th></tr>
+        </thead>
+        <tbody>
+          {hrZonesBpm(maxHr).map((z) => (
+            <tr key={z.zone} className="border-t border-slate-100 dark:border-slate-800">
+              <td className="py-2"><b>Z{z.zone}</b> <span className="text-slate-500">{z.name}</span></td>
+              <td>{z.min}-{z.max}%</td>
+              <td className="text-right font-semibold tabular-nums">{z.minBpm}-{z.maxBpm}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  )
+}

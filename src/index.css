@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Noto Sans Thai", "Sarabun", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+:root {
+  color-scheme: light dark;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100;
+  overscroll-behavior-y: none;
+}
+
+input[type="date"],
+input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
