@@ -267,3 +267,14 @@ export function buildTimerSteps(segments: Segment[], pick: 'min' | 'max' = 'min'
 export function totalTimerSec(steps: TimerStep[]): number {
   return steps.reduce((a, s) => a + (s.sec ?? 0), 0)
 }
+
+// ---------------------------------------------------------------------------
+// Deload: น้ำหนัก 60% และไม่เกิน 2 เซ็ต เฉพาะสัปดาห์นั้น
+// ---------------------------------------------------------------------------
+export const DELOAD_PCT = 0.6
+export const DELOAD_SETS = 2
+
+export function deloadWeight(weight: number | null | undefined, step = 2.5): number | null {
+  if (weight == null) return null
+  return Math.max(0, roundToStep(weight * DELOAD_PCT, step))
+}

@@ -4,17 +4,18 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   invalidateDash, qk, useExercises, useLastPerformance, useProgramExercises, usePrograms, useRotation, useSettings, useTodayPlan,
 } from '@/lib/api'
-import { canProgress, fmtDuration } from '@/lib/calc'
-import { fmtLongDate, todayIso } from '@/lib/date'
+import { canProgress, deloadWeight, DELOAD_SETS, fmtDuration } from '@/lib/calc'
+import { fmtLongDate, todayIso, weekStart } from '@/lib/date'
 import { clearDraft, loadDraft, saveDraft } from '@/lib/offline/db'
-import { upsertRows, uuid } from '@/lib/offline/queue'
+import { updateRows, upsertRows, uuid } from '@/lib/offline/queue'
 import { rangeWarnings } from '@/lib/validation'
 import { unlockAudio } from '@/lib/alerts'
-import { Badge, Button, Card, Empty, NumInput, PageTitle, Segmented, Select, Spinner, Stepper, Textarea, cx } from '@/components/ui'
+import { Badge, Button, Card, Empty, NumInput, PageTitle, Select, Spinner, Stepper, Textarea, cx } from '@/components/ui'
 import { confirmDialog, confirmWarnings, toast } from '@/components/overlay'
 import type { BandLevel, Exercise, LastPerformance, MeasureType, ProgramExercise, WeightProgram } from '@/types/database'
 import { RestTimer } from './RestTimer'
 import { fmtLastPerformance, fmtTarget } from './format'
+import { advanceOpen, withPartners } from './openState'
 
 interface SetDraft { key: string; weight_lb: number | null; reps: number | null; seconds: number | null; band_level: BandLevel | null; done: boolean }
 interface ExDraft {
@@ -33,9 +34,13 @@ interface SessionDraft {
   exercises: ExDraft[]
   pain: Record<string, number | null>
   note: string
+  deload?: boolean
+  /** ท่าที่กางอยู่ (key) */
+  open?: string[]
 }
 
 const DRAFT_KEY = 'workout-draft'
+
 const BANDS: BandLevel[] = ['เบา', 'กลาง', 'หนัก']
 
 function buildExercise(
@@ -45,13 +50,17 @@ function buildExercise(
   last: LastPerformance | undefined,
   warmup: boolean,
   defaultRest: number,
+  deload?: { step: number },
 ): ExDraft {
   const lastSets = last?.sets ?? []
-  const sets: SetDraft[] = Array.from({ length: pe.target_sets }, (_, i) => {
+  const nSets = deload && !warmup ? Math.min(pe.target_sets, DELOAD_SETS) : pe.target_sets
+  const sets: SetDraft[] = Array.from({ length: nSets }, (_, i) => {
     const ls = lastSets[i] ?? lastSets[lastSets.length - 1]
     return {
       key: uuid(),
-      weight_lb: measure === 'band' ? null : (ls?.weight_lb ?? pe.target_weight_lb ?? null),
+      weight_lb: measure === 'band' ? null
+        : deload && !warmup ? deloadWeight(ls?.weight_lb ?? pe.target_weight_lb, deload.step)
+        : (ls?.weight_lb ?? pe.target_weight_lb ?? null),
       reps: measure === 'seconds' ? null : pe.target_reps ?? ls?.reps ?? 10,
       seconds: measure === 'seconds' ? pe.target_seconds ?? ls?.seconds ?? 30 : null,
       band_level: measure === 'band' ? (ls?.band_level ?? 'กลาง') : null,
@@ -63,7 +72,7 @@ function buildExercise(
     exercise_id: pe.exercise_id,
     warmup,
     target: {
-      sets: pe.target_sets,
+      sets: nSets,
       reps: pe.target_reps,
       reps_max: pe.target_reps_max ?? null,
       seconds: pe.target_seconds,
@@ -105,18 +114,20 @@ export function WorkoutLogPage() {
   const pinned = settings.data?.pinned_pain_parts ?? []
   const ready = programs.data && programExercises.data && exercises.data && lastPerf.data && settings.data && rotation.data && (plan.data || plan.isError)
 
-  const build = useCallback((programId: string | null): SessionDraft => {
+  const deloadActive = settings.data?.deload_week_start === weekStart(today)
+  const build = useCallback((programId: string | null, deload = deloadActive): SessionDraft => {
+    const dl = deload ? { step } : undefined
     const pes = programExercises.data ?? []
     const list: ExDraft[] = []
     for (const wp of warmupPrograms) {
       for (const pe of pes.filter((x) => x.program_id === wp.id)) {
         const ex = exById.get(pe.exercise_id)
-        if (ex) list.push(buildExercise(pe, ex.measure_type, lastPerf.data?.get(ex.id), true, defaultRest))
+        if (ex) list.push(buildExercise(pe, ex.measure_type, lastPerf.data?.get(ex.id), true, defaultRest, dl))
       }
     }
     for (const pe of pes.filter((x) => x.program_id === programId)) {
       const ex = exById.get(pe.exercise_id)
-      if (ex) list.push(buildExercise(pe, ex.measure_type, lastPerf.data?.get(ex.id), false, defaultRest))
+      if (ex) list.push(buildExercise(pe, ex.measure_type, lastPerf.data?.get(ex.id), false, defaultRest, dl))
     }
     return {
       id: uuid(),
@@ -126,8 +137,10 @@ export function WorkoutLogPage() {
       exercises: list,
       pain: Object.fromEntries(pinned.map((p) => [p, null])),
       note: '',
+      deload,
+      open: withPartners(list, list[0]?.key),
     }
-  }, [programExercises.data, warmupPrograms, exById, lastPerf.data, defaultRest, pinned, today])
+  }, [programExercises.data, warmupPrograms, exById, lastPerf.data, defaultRest, pinned, today, deloadActive, step])
 
   // เริ่มต้น: กู้ draft ถ้ามี ไม่งั้นสร้างจากโปรแกรม (query ?program → today_plan → rotation แรก)
   useEffect(() => {
@@ -137,7 +150,8 @@ export function WorkoutLogPage() {
       const saved = await loadDraft<SessionDraft>(DRAFT_KEY)
       const wanted = params.get('program')
       if (saved && (!wanted || wanted === saved.value.program_id)) {
-        setDraft(saved.value)
+        const v = saved.value
+        setDraft(v.open ? v : { ...v, open: withPartners(v.exercises, v.exercises[0]?.key) })
         setRestored(true)
         return
       }
@@ -160,13 +174,22 @@ export function WorkoutLogPage() {
     if (id === draft.program_id) return
     if (touched && !(await confirmDialog('เปลี่ยนโปรแกรม? เซ็ตที่ติ๊กไว้จะหายไป'))) return
     setParams({ program: id }, { replace: true })
-    setDraft(build(id))
+    setDraft(build(id, Boolean(draft.deload)))
     setRestored(false)
+  }
+
+  const toggleDeload = async () => {
+    const on = !draft.deload
+    if (touched && !(await confirmDialog(on ? 'เริ่ม deload? เซ็ตที่ติ๊กไว้จะถูกคำนวณใหม่' : 'ปิด deload? เซ็ตที่ติ๊กไว้จะถูกคำนวณใหม่'))) return
+    await updateRows('settings', [settings.data!.id], { deload_week_start: on ? weekStart(today) : null })
+    void qc.invalidateQueries({ queryKey: qk.settings })
+    setDraft(build(draft.program_id, on))
+    toast(on ? 'เริ่มสัปดาห์ deload (ถึงวันอาทิตย์นี้)' : 'ปิด deload แล้ว')
   }
 
   const restart = async () => {
     if (!(await confirmDialog('ล้าง draft แล้วเริ่มใหม่?', { danger: true, okText: 'เริ่มใหม่' }))) return
-    setDraft(build(draft.program_id))
+    setDraft(build(draft.program_id, Boolean(draft.deload)))
     setRestored(false)
   }
 
@@ -179,6 +202,7 @@ export function WorkoutLogPage() {
   const toggleDone = (ex: ExDraft, s: SetDraft) => {
     unlockAudio()
     updateSet(ex.key, s.key, { done: !s.done })
+    if (!s.done) setDraft((d) => d && { ...d, open: advanceOpen(d.exercises, d.open ?? [], ex.key, s.key) })
     if (!s.done && ex.target.rest_sec <= 0) {
       toast('Superset — ไปท่าคู่ต่อได้เลย ↔', { ms: 1500 })
     } else if (!s.done) {
@@ -209,7 +233,7 @@ export function WorkoutLogPage() {
       { exercise_id: id, target_sets: 3, target_reps: ex.measure_type === 'seconds' ? null : 10, target_seconds: ex.measure_type === 'seconds' ? 30 : null, target_weight_lb: null, rest_sec: defaultRest },
       ex.measure_type, lastPerf.data!.get(id), false, defaultRest,
     )
-    setDraft((d) => d && { ...d, exercises: [...d.exercises, e] })
+    setDraft((d) => d && { ...d, exercises: [...d.exercises, e], open: [...(d.open ?? []), e.key] })
     setAddingId('')
   }
 
@@ -229,6 +253,7 @@ export function WorkoutLogPage() {
       const duration = Math.max(1, Math.round((Date.now() - draft.started_at) / 60000))
       const s1 = await upsertRows('weight_sessions', [{
         id: draft.id, date: draft.date, program_id: draft.program_id, duration_min: Math.min(duration, 600), note: draft.note || null,
+        is_deload: Boolean(draft.deload),
       }])
       const setNo = new Map<string, number>()
       const rows = chosen.map(({ e, s }) => {
@@ -267,6 +292,16 @@ export function WorkoutLogPage() {
   const mains = draft.exercises.filter((e) => !e.warmup)
   const elapsed = Math.round((Date.now() - draft.started_at) / 1000)
 
+  const openKeys = new Set(draft.open ?? [])
+  const toggleOpen = (key: string) => {
+    const group = withPartners(draft.exercises, key)
+    setDraft((d) => d && {
+      ...d,
+      open: openKeys.has(key) ? (d.open ?? []).filter((k) => !group.includes(k)) : [...new Set([...(d.open ?? []), ...group])],
+    })
+  }
+  const allOpen = draft.exercises.length > 0 && draft.exercises.every((e) => openKeys.has(e.key))
+
   const renderEx = (ex: ExDraft) => {
     const info = exById.get(ex.exercise_id)
     if (!info) return null
@@ -278,6 +313,8 @@ export function WorkoutLogPage() {
         last={lastPerf.data!.get(ex.exercise_id)}
         step={step}
         partner={ex.superset ? draft.exercises.filter((o) => o.key !== ex.key && o.superset === ex.superset && o.warmup === ex.warmup).map((o) => exById.get(o.exercise_id)?.name).join(', ') : ''}
+        open={openKeys.has(ex.key)}
+        onToggleOpen={() => toggleOpen(ex.key)}
         onToggle={(s) => toggleDone(ex, s)}
         onSet={(s, p) => updateSet(ex.key, s.key, p)}
         onAddSet={() => addSet(ex)}
@@ -302,14 +339,18 @@ export function WorkoutLogPage() {
         </div>
       )}
 
-      <Segmented
-        value={draft.program_id}
-        onChange={(v) => void switchProgram(v!)}
-        options={mainPrograms.map((p: WeightProgram) => ({
-          value: p.id,
-          label: <span><span className="mr-1 inline-block size-2 rounded-full" style={{ background: p.color }} />{p.name}</span>,
-        }))}
-      />
+      <div className="flex flex-wrap gap-2">
+        {mainPrograms.map((p: WeightProgram) => (
+          <button key={p.id} type="button" onClick={() => void switchProgram(p.id)}
+            className={cx('min-h-10 rounded-full px-3 text-sm font-semibold', draft.program_id === p.id ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800')}>
+            <span className="mr-1 inline-block size-2 rounded-full" style={{ background: p.color }} />{p.name}
+          </button>
+        ))}
+      </div>
+      <div className={cx('flex items-center justify-between gap-2 rounded-xl p-3 text-sm', draft.deload ? 'bg-teal-50 text-teal-900 dark:bg-teal-950 dark:text-teal-100' : 'bg-slate-50 dark:bg-slate-800/60')}>
+        <span>{draft.deload ? '🧘 สัปดาห์ deload: น้ำหนัก 60% · ไม่เกิน 2 เซ็ต' : 'สัปดาห์ deload (น้ำหนัก 60%, 2 เซ็ต)'}</span>
+        <Button size="sm" variant={draft.deload ? 'secondary' : 'ghost'} onClick={() => void toggleDeload()}>{draft.deload ? 'ปิด' : 'เริ่ม'}</Button>
+      </div>
       {program?.description && <p className="-mt-2 text-sm text-slate-500">{program.description}</p>}
 
       {warmups.length > 0 && (
@@ -319,7 +360,12 @@ export function WorkoutLogPage() {
         </details>
       )}
 
-      <h2 className="text-lg font-bold">ท่าหลัก</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold">ท่าหลัก</h2>
+        <Button size="sm" variant="ghost" onClick={() => setDraft({ ...draft, open: allOpen ? [] : draft.exercises.map((e) => e.key) })}>
+          {allOpen ? 'หุบทั้งหมด' : 'กางทั้งหมด'}
+        </Button>
+      </div>
       {mains.length ? <div className="space-y-3">{mains.map(renderEx)}</div> : <Empty>โปรแกรมนี้ยังไม่มีท่า</Empty>}
 
       <Card>
@@ -376,12 +422,14 @@ export function WorkoutLogPage() {
   )
 }
 
-function ExerciseCard({ ex, info, last, step, partner, onToggle, onSet, onAddSet, onRemoveSet, onRemove, onBump }: {
+function ExerciseCard({ ex, info, last, step, partner, open, onToggleOpen, onToggle, onSet, onAddSet, onRemoveSet, onRemove, onBump }: {
   ex: ExDraft
   info: Exercise
   last: LastPerformance | undefined
   step: number
   partner?: string
+  open: boolean
+  onToggleOpen: () => void
   onToggle: (s: SetDraft) => void
   onSet: (s: SetDraft, p: Partial<SetDraft>) => void
   onAddSet: () => void
@@ -394,14 +442,22 @@ function ExerciseCard({ ex, info, last, step, partner, onToggle, onSet, onAddSet
   const doneCount = ex.sets.filter((s) => s.done).length
   return (
     <Card className={cx(doneCount === ex.sets.length && ex.sets.length > 0 && 'ring-emerald-400 dark:ring-emerald-700')}>
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <div>
-          <h3 className="text-lg font-bold">{info.name}</h3>
+      <div className={cx('flex items-start justify-between gap-2', open && 'mb-2')}>
+        <button type="button" onClick={onToggleOpen} aria-expanded={open} className="min-w-0 flex-1 text-left">
+          <h3 className="flex items-center gap-2 text-lg font-bold">
+            <span className={cx('inline-block text-sm text-slate-400 transition-transform', open && 'rotate-90')}>▶</span>
+            <span className="min-w-0 flex-1">{info.name}</span>
+            <span className={cx('shrink-0 rounded-full px-2 text-sm font-semibold tabular-nums', doneCount === ex.sets.length && ex.sets.length > 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300')}>
+              {doneCount}/{ex.sets.length}
+            </span>
+          </h3>
           <p className="text-sm text-slate-500">เป้า {fmtTarget({ target_sets: ex.target.sets, target_reps: ex.target.reps, target_reps_max: ex.target.reps_max ?? null, target_seconds: ex.target.seconds, target_weight_lb: ex.target.weight_lb })} · {ex.target.rest_sec > 0 ? `พัก ${ex.target.rest_sec} วิ` : 'ไม่พัก (ต่อท่าคู่)'}</p>
           {ex.superset && <p className="text-sm font-semibold text-violet-700 dark:text-violet-300">↔ Superset {ex.superset}{partner ? ` คู่กับ ${partner}` : ''}</p>}
-        </div>
+          {!open && lastText && <p className="truncate text-sm text-blue-800 dark:text-blue-300">{lastText}</p>}
+        </button>
         <button type="button" onClick={onRemove} className="p-2 text-slate-400" aria-label="ลบท่า">✕</button>
       </div>
+      {open && (<>
       {lastText ? (
         <p className="mb-2 rounded-lg bg-blue-50 px-3 py-2 font-semibold text-blue-900 dark:bg-blue-950 dark:text-blue-200">{lastText}</p>
       ) : (
@@ -416,7 +472,7 @@ function ExerciseCard({ ex, info, last, step, partner, onToggle, onSet, onAddSet
       <div className="mb-1 flex gap-2 px-1 text-xs text-slate-500">
         <span className="w-6 text-center">เซ็ต</span>
         <span className="flex-1 text-center">{info.measure_type === 'band' ? 'ยางยืด' : 'น้ำหนัก (lb)'}</span>
-        <span className="w-16 text-center">{info.measure_type === 'seconds' ? 'วินาที' : 'ครั้ง'}</span>
+        <span className="w-14 text-center">{info.measure_type === 'seconds' ? 'วินาที' : 'ครั้ง'}</span>
         <span className="w-10" />
       </div>
       <div className="space-y-2">
@@ -461,6 +517,7 @@ function ExerciseCard({ ex, info, last, step, partner, onToggle, onSet, onAddSet
         <span className="ml-auto text-sm text-slate-500">{doneCount}/{ex.sets.length} เซ็ต</span>
         {ex.warmup && <Badge color="green">warm-up</Badge>}
       </div>
+      </>)}
     </Card>
   )
 }

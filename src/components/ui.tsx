@@ -86,8 +86,10 @@ export function Label({ children, hint }: { children: ReactNode; hint?: ReactNod
   )
 }
 
-const inputCls =
-  'w-full min-h-12 rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100'
+// สีและกรอบของช่องกรอก (ไม่มีขนาด/padding เพื่อไม่ให้คลาสชนกัน — Tailwind ใช้ลำดับใน CSS ไม่ใช่ลำดับในคลาส)
+const inputSkin =
+  'rounded-xl border border-slate-300 bg-white text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100'
+const inputCls = cx(inputSkin, 'w-full min-h-12 px-3 text-base')
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { label?: ReactNode; hint?: ReactNode; error?: string }>(
   function Input({ label, hint, error, className, ...rest }, ref) {
@@ -152,7 +154,7 @@ export function Stepper({
   }
   const btn = cx(
     'shrink-0 rounded-xl bg-slate-200 font-bold active:bg-slate-300 dark:bg-slate-700 dark:active:bg-slate-600',
-    compact ? 'size-10 text-xl' : 'size-12 text-2xl',
+    compact ? 'h-10 w-9 text-xl' : 'size-12 text-2xl',
   )
   return (
     <div className={cx('flex items-center gap-1', className)}>
@@ -162,7 +164,7 @@ export function Stepper({
       <div className="relative min-w-0 flex-1">
         <input
           inputMode="decimal"
-          className={cx(inputCls, 'text-center font-semibold tabular-nums', compact ? 'min-h-10 px-1' : 'text-lg')}
+          className={cx(inputSkin, 'w-full min-w-0 text-center font-semibold tabular-nums', compact ? 'min-h-10 px-0.5 text-lg' : 'min-h-12 px-1 text-lg')}
           value={text ?? (value ?? '')}
           onFocus={(e) => e.target.select()}
           onBlur={() => setText(null)}
@@ -225,7 +227,7 @@ export function NumInput({ value, onChange, className }: { value: number | null;
   return (
     <input
       inputMode="numeric"
-      className={cx(inputCls, 'min-h-10 w-16 shrink-0 px-1 text-center text-lg font-semibold tabular-nums', className)}
+      className={cx(inputSkin, 'min-h-10 w-14 shrink-0 px-0.5 text-center text-lg font-semibold tabular-nums', className)}
       value={value ?? ''}
       onFocus={(e) => e.target.select()}
       onChange={(e) => {

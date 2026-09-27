@@ -63,6 +63,9 @@ export type Settings = Base & Nullable<{
   notify_weekly: boolean
   notify_push: boolean
   nutrition_mode: 'cut' | 'maintenance'
+  deload_week_start: string | null
+  weather_lat: number | null
+  weather_lon: number | null
 }
 
 export type Goal = Base & {
@@ -342,6 +345,9 @@ export type TdeeProposal = Base & {
   proposed_delta: number | null
   status: 'pending' | 'accepted' | 'dismissed' | 'insufficient'
 }
+export type ShoeUsage = { user_id: string; shoe_id: string; km: number; runs: number; last_used: string | null }
+export type PushSubscriptionRow = Base & { endpoint: string; p256dh: string; auth: string; user_agent: string | null }
+export type NotificationLog = Base & { date: string; kind: 'morning' | 'evening' | 'weekly' | 'test'; channels: string[]; title: string | null; body: string | null }
 export type FoodUsage = { user_id: string; food_id: string | null; recipe_id: string | null; uses: number; last_used: string; last_at: string }
 
 export type WeeklyReview = Base & {
@@ -503,34 +509,8 @@ export interface PersonalRecords {
   best_21k: { sec: number; date: string; distance_km: number } | null
 }
 
-export interface WeeklyReviewStats {
-  week_start: string
-  planned_weight: number
-  done_weight: number
-  planned_run: number
-  done_run: number
-  active_days: number
-  skipped_days: number
-  weight_avg: number | null
-  weight_prev_avg: number | null
-  weight_prev2_avg: number | null
-  run_km: number
-  run_km_prev: number
-  resting_hr_avg: number | null
-  resting_hr_baseline: number | null
-  sleep_avg: number | null
-  training_weeks_no_deload: number
-  prs: number
-  protein_days_hit: number
-  food_days: number
-  low_protein_streak: number
-  high_rhr_streak: number
-  low_sleep_streak: number
-  pain: { part: string; avg: number | null; prev_avg: number | null; last3_high: boolean }[]
-  stalled_exercises: string[]
-  grip_exercises: string[]
-  shoes_near_retire: { name: string; km: number; retire_km: number }[]
-}
+export type { WeeklyReviewStats } from '@/lib/rules'
+import type { WeeklyReviewStats } from '@/lib/rules'
 
 /** ผลของ today_plan(date) */
 export interface ResolvedPlanDay extends Partial<RunPlanDay> {
@@ -571,7 +551,7 @@ type DefaultedKeys =
   | 'notify_push' | 'start_date' | 'status' | 'sort_order' | 'measure_type' | 'grip_intensive' | 'active' | 'color'
   | 'is_warmup' | 'target_sets' | 'is_deload' | 'segments' | 'items' | 'add_strides' | 'add_weights' | 'day_offset'
   | 'start_km' | 'retire_km' | 'completed' | 'source' | 'pace_sec_per_km' | 'pinned' | 'calories' | 'protein_g'
-  | 'carb_g' | 'fat_g' | 'is_estimate' | 'is_favorite' | 'servings' | 'taken' | 'good' | 'improve' | 'nutrition_mode'
+  | 'carb_g' | 'fat_g' | 'is_estimate' | 'is_favorite' | 'servings' | 'taken' | 'good' | 'improve' | 'nutrition_mode' | 'channels'
 
 export interface Database {
   public: {
@@ -610,6 +590,8 @@ export interface Database {
       nutrition_targets: Opt<NutritionTarget>
       weekly_reviews: Opt<WeeklyReview>
       tdee_proposals: Opt<TdeeProposal>
+      push_subscriptions: Opt<PushSubscriptionRow>
+      notification_log: Opt<NotificationLog>
     }
     Views: {
       last_performance: View<LastPerformance>
@@ -622,6 +604,7 @@ export interface Database {
       run_pr_events: View<RunPrEvent>
       weekly_training: View<WeeklyTraining>
       food_usage: View<FoodUsage>
+      shoe_usage: View<ShoeUsage>
     }
     Functions: {
       today_plan: { Args: { p_date?: string }; Returns: TodayPlan }

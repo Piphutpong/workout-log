@@ -1,6 +1,36 @@
 // กฎแจ้งเตือนและคำแนะนำอัตโนมัติ (ข้อ 6) — ไม่ใช้ AI
 // รับตัวเลขจาก weekly_review_stats() แล้วคืนข้อที่ทำได้ดี / ต้องปรับ เรียงตามความสำคัญ
-import type { WeeklyReviewStats } from '@/types/database'
+// ไฟล์นี้ต้องไม่มี import (ถูกคัดลอกไปใช้ใน Supabase Edge Function ด้วย: npm run shared:sync)
+
+export interface WeeklyReviewStats {
+  week_start: string
+  planned_weight: number
+  done_weight: number
+  planned_run: number
+  done_run: number
+  active_days: number
+  skipped_days: number
+  weight_avg: number | null
+  weight_prev_avg: number | null
+  weight_prev2_avg: number | null
+  run_km: number
+  run_km_prev: number
+  resting_hr_avg: number | null
+  resting_hr_baseline: number | null
+  sleep_avg: number | null
+  training_weeks_no_deload: number
+  prs: number
+  protein_days_hit: number
+  food_days: number
+  low_protein_streak: number
+  high_rhr_streak: number
+  low_sleep_streak: number
+  pain: { part: string; avg: number | null; prev_avg: number | null; last3_high: boolean }[]
+  stalled_exercises: string[]
+  grip_exercises: string[]
+  shoes_near_retire: { name: string; km: number; retire_km: number }[]
+}
+
 
 export interface RuleMessage { key: string; text: string; priority: number }
 export interface ReviewResult { good: RuleMessage[]; improve: RuleMessage[] }

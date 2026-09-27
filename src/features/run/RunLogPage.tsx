@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -7,13 +7,17 @@ import { useQueryClient } from '@tanstack/react-query'
 import { invalidateDash, qk, useLastRunByType, useRecentRuns, useSettings, useShoes, useTodayPlan } from '@/lib/api'
 import { bpmToPct, fmtDuration, fmtPace, hrStatus, paceDelta, paceSecPerKm, parseDuration, planHrRange } from '@/lib/calc'
 import { fmtDate, fmtDayMonth, nowTime, todayIso } from '@/lib/date'
-import { upsertRows, uuid } from '@/lib/offline/queue'
+import { updateRows, upsertRows, uuid } from '@/lib/offline/queue'
+import { supabase } from '@/lib/supabase'
+import { currentPosition, fetchWeather } from '@/lib/weather'
 import { optionalNumber, rangeWarnings } from '@/lib/validation'
 import { Badge, Button, Card, Input, PageTitle, Segmented, Select, Spinner, Textarea, cx } from '@/components/ui'
 import { confirmWarnings, toast } from '@/components/overlay'
 import type { RunType } from '@/types/database'
 import { RUN_TYPE_TH, runTypeFromWorkout } from './runMeta'
 import { SegmentList } from './SegmentList'
+import { parseRunFile, type ImportedRun } from './runImport'
+import { shoeWarning, useShoeUsage } from './ShoesPage'
 
 const schema = z.object({
   date: z.string().min(10),
@@ -49,6 +53,10 @@ export function RunLogPage() {
   const [reps, setReps] = useState<RepRow[]>([])
   const [showReps, setShowReps] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [imported, setImported] = useState<ImportedRun | null>(null)
+  const [weatherNote, setWeatherNote] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const shoeUsage = useShoeUsage()
 
   const planDay = plan.data?.activity === 'run' ? plan.data.plan_day : null
   const maxHr = settings.data?.max_hr ?? 186
@@ -86,6 +94,61 @@ export function RunLogPage() {
   const avgHr = Number(w.avg_hr) || null
   const status = avgHr && hrRange ? hrStatus(avgHr, maxHr, hrRange.min, hrRange.max) : null
   const isIntervalType = INTERVAL_TYPES.includes(w.run_type ?? '')
+
+  // ---- สภาพอากาศ (Open-Meteo) ----
+  const lat = Number(settings.data?.weather_lat ?? 13.7563)
+  const lon = Number(settings.data?.weather_lon ?? 100.5018)
+  const loadWeather = async (force = false) => {
+    if (!navigator.onLine || !w.date) return
+    if (!force && (w.temp_c != null && w.temp_c !== '')) return
+    try {
+      const r = await fetchWeather(lat, lon, w.date, w.time_of_day)
+      if (!r) return setWeatherNote('ไม่มีข้อมูลอากาศของเวลานั้น')
+      setValue('temp_c', r.temp_c)
+      setValue('humidity_pct', r.humidity_pct)
+      setWeatherNote(`จาก Open-Meteo (${lat.toFixed(2)}, ${lon.toFixed(2)}) แก้เองได้`)
+    } catch (e) {
+      setWeatherNote(`ดึงอากาศไม่สำเร็จ: ${(e as Error).message}`)
+    }
+  }
+  useEffect(() => {
+    const t = setTimeout(() => void loadWeather(false), 400)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [w.date, w.time_of_day, lat, lon])
+  const useMyLocation = async () => {
+    try {
+      const pos = await currentPosition()
+      if (settings.data) await updateRows('settings', [settings.data.id], { weather_lat: pos.lat, weather_lon: pos.lon })
+      await qc.invalidateQueries({ queryKey: qk.settings })
+      toast('บันทึกตำแหน่งสำหรับดึงอากาศแล้ว')
+    } catch (e) {
+      toast(`ใช้ตำแหน่งไม่ได้: ${(e as Error).message}`)
+    }
+  }
+
+  // ---- import ไฟล์วิ่ง ----
+  const onFile = async (file: File) => {
+    try {
+      const r = await parseRunFile(file)
+      const { data: dup } = await supabase.from('runs').select('id, date').eq('source', r.source).eq('external_id', r.external_id).maybeSingle()
+      if (dup) return toast(`ไฟล์นี้เคย import แล้ว (${fmtDate(r.date)})`)
+      setImported(r)
+      setValue('date', r.date)
+      setValue('time_of_day', r.time_of_day)
+      setValue('distance_km', r.distance_km)
+      setValue('duration', fmtDuration(r.duration_sec))
+      setValue('avg_hr', r.avg_hr)
+      setValue('max_hr', r.max_hr)
+      setValue('temp_c', null)
+      toast(`อ่านไฟล์ ${r.source.toUpperCase()} แล้ว: ${r.distance_km} กม. · ${r.splits.length} splits`)
+    } catch (e) {
+      toast(`อ่านไฟล์ไม่ได้: ${(e as Error).message}`)
+    }
+  }
+  const shoe = shoes.data?.find((x) => x.id === w.shoe_id)
+  const shoeKm = shoe ? Number(shoeUsage.data?.get(shoe.id)?.km ?? shoe.start_km) : 0
+  const shoeWarn = shoe ? shoeWarning(shoe, shoeKm) : null
 
   // เตรียมแถวผลรายเที่ยวจาก segment แรกของแผน
   const openReps = () => {
@@ -128,7 +191,10 @@ export function RunLogPage() {
         temp_c: parsed.temp_c,
         humidity_pct: parsed.humidity_pct,
         note: parsed.note || null,
+        source: imported?.source ?? 'manual',
+        external_id: imported?.external_id ?? null,
       }])
+      if (imported?.splits.length) await upsertRows('run_splits', imported.splits.map((sp) => ({ ...sp, run_id: id })))
       const repRows = showReps
         ? reps
             .map((r, i) => ({ rep_no: i + 1, distance_m: Number(r.distance_m) || null, duration_sec: parseDuration(r.duration), avg_hr: Number(r.avg_hr) || null }))
@@ -141,6 +207,7 @@ export function RunLogPage() {
       void invalidateDash(qc)
       toast(res.queued ? 'บันทึกแล้ว (รอส่งเมื่อออนไลน์)' : 'บันทึกการวิ่งแล้ว 🏃')
       reset()
+      setImported(null)
       navigate(planDay?.add_weights ? '/workout' : '/today')
     } catch (e) {
       toast(`บันทึกไม่สำเร็จ: ${(e as Error).message}`)
@@ -164,6 +231,25 @@ export function RunLogPage() {
         </Card>
       )}
 
+      <input ref={fileRef} type="file" accept=".gpx,.tcx,.fit" className="hidden" onChange={(e) => {
+        const f = e.target.files?.[0]
+        if (f) void onFile(f)
+        e.target.value = ''
+      }} />
+      <Button block variant="secondary" onClick={() => fileRef.current?.click()}>📂 Import ไฟล์ .gpx / .fit / .tcx</Button>
+      {imported && (
+        <Card title={`Splits จากไฟล์ ${imported.source.toUpperCase()}`} action={<Button size="sm" variant="ghost" onClick={() => setImported(null)}>ยกเลิก</Button>}>
+          <table className="w-full text-sm tabular-nums">
+            <thead><tr className="text-left text-slate-500"><th>กม.</th><th className="text-right">เวลา</th><th className="text-right">HR</th><th className="text-right">ขึ้น (ม.)</th></tr></thead>
+            <tbody>{imported.splits.map((sp) => (
+              <tr key={sp.km_no} className="border-t border-slate-100 dark:border-slate-800">
+                <td className="py-1">{sp.km_no}</td><td className="text-right">{fmtPace(sp.duration_sec)}</td>
+                <td className="text-right">{sp.avg_hr ?? '-'}</td><td className="text-right">{sp.elevation_gain_m ?? '-'}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </Card>
+      )}
       <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
         <Card>
           <div className="grid grid-cols-2 gap-3">
@@ -261,6 +347,12 @@ export function RunLogPage() {
               {(shoes.data ?? []).filter((s) => s.active).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
           </div>
+          <Link to="/more/shoes" className="mt-1 block text-right text-sm text-blue-700 dark:text-blue-300">{shoes.data?.length ? 'จัดการรองเท้า' : '+ เพิ่มรองเท้า'}</Link>
+          {shoeWarn?.warn && (
+            <p className="mt-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+              ⚠️ รองเท้า {shoe!.name} ใช้ไป {shoeKm}/{Number(shoe!.retire_km)} กม. ({Math.round(shoeWarn.pct)}%) ใกล้ถึงเวลาเปลี่ยน
+            </p>
+          )}
           <div className="mt-3">
             <Segmented
               value={w.completed ?? 'full'}
@@ -270,11 +362,15 @@ export function RunLogPage() {
           </div>
         </Card>
 
-        <Card title="สภาพอากาศ">
+        <Card title="🌡 สภาพอากาศ" action={<div className="flex gap-1">
+          <Button size="sm" variant="ghost" onClick={() => void useMyLocation()}>📍</Button>
+          <Button size="sm" variant="ghost" onClick={() => void loadWeather(true)}>↻</Button>
+        </div>}>
           <div className="grid grid-cols-2 gap-3">
             <Input label="อุณหภูมิ (°C)" inputMode="decimal" {...register('temp_c')} />
             <Input label="ความชื้น (%)" inputMode="numeric" {...register('humidity_pct')} />
           </div>
+          {weatherNote && <p className="mt-1 text-xs text-slate-500">{weatherNote} · 📍 = ใช้ตำแหน่งปัจจุบัน</p>}
         </Card>
 
         <Textarea label="โน้ต" {...register('note')} />

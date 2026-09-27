@@ -68,3 +68,16 @@ describe('Stepper (น้ำหนักที่ยก)', () => {
     expect(input.value).toBe('30')
   })
 })
+
+describe('ขนาดช่องในแถวเซ็ต (กันคลาส Tailwind ชนกัน)', () => {
+  it('ช่องครั้งไม่มี w-full และช่องน้ำหนักไม่มี px-3', async () => {
+    const { NumInput } = await import('./ui')
+    render(<><Stepper compact value={25} onChange={() => undefined} /><NumInput value={10} onChange={() => undefined} /></>)
+    const [weight, reps] = screen.getAllByRole('textbox')
+    expect(reps.className.split(' ')).not.toContain('w-full')
+    expect(reps.className.split(' ')).toContain('w-14')
+    expect(weight.className.split(' ')).not.toContain('px-3')
+    expect(weight.className.split(' ')).toContain('min-w-0')
+    expect((weight as HTMLInputElement).value).toBe('25')
+  })
+})

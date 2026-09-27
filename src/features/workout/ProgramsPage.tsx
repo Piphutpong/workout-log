@@ -7,6 +7,7 @@ import { THAI_DOW_SHORT } from '@/lib/date'
 import { Badge, Button, Card, Empty, Input, PageTitle, Select, Spinner } from '@/components/ui'
 import { confirmDialog, Modal, toast } from '@/components/overlay'
 import { SortableList } from '@/components/SortableList'
+import { WarmupEditor } from './WarmupEditor'
 import { FREE_RUN_TEMPLATES } from '@/features/run/runMeta'
 import type { Activity, WeeklySchedule, WeightProgram } from '@/types/database'
 
@@ -64,7 +65,7 @@ export function ProgramsPage() {
   return (
     <div className="space-y-4">
       <PageTitle action={<Button size="sm" onClick={() => setCreating(true)}>+ โปรแกรมใหม่</Button>}>โปรแกรมเวท</PageTitle>
-      <Link to="/workout" className="-mt-2 block text-sm text-blue-700 dark:text-blue-300">← กลับไปบันทึกเวท</Link>
+      <div className="-mt-2 flex justify-between text-sm"><Link to="/workout" className="text-blue-700 dark:text-blue-300">← กลับไปบันทึกเวท</Link><Link to="/more/exercises" className="text-blue-700 dark:text-blue-300">คลังท่า →</Link></div>
 
       <div className="space-y-2">
         {list.map((p) => (
@@ -85,6 +86,7 @@ export function ProgramsPage() {
 
       <RotationEditor programs={list.filter((p) => !p.is_warmup)} />
       <ScheduleEditor />
+      <WarmupEditor />
 
       <Modal
         open={creating}

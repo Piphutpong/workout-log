@@ -129,3 +129,13 @@ describe('วันที่ (Asia/Bangkok)', () => {
     expect(weekStart('2026-09-28')).toBe('2026-09-28')
   })
 })
+
+describe('deload', () => {
+  it('น้ำหนัก 60% ปัดตาม step และไม่เกิน 2 เซ็ต', async () => {
+    const { deloadWeight, DELOAD_SETS } = await import('./calc')
+    expect(deloadWeight(25, 2.5)).toBe(15)
+    expect(deloadWeight(32.5, 2.5)).toBe(20)
+    expect(deloadWeight(null)).toBeNull()
+    expect(Math.min(3, DELOAD_SETS)).toBe(2)
+  })
+})

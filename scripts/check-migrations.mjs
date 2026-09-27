@@ -221,6 +221,27 @@ assert.equal(ti.mode, 'cut')
 await db.exec(`insert into tdee_proposals (week_start, mode, tdee, proposed_delta) values ('2026-10-05', 'cut', 2600, -100)`)
 console.log('✓ foods seed', foods, '· tdee_inputs', JSON.stringify(ti.w14), 'target', ti.current_avg_target)
 
+// ---- Phase 4 ----------------------------------------------------------------
+const shoe = (await one(`insert into shoes (name, start_km, retire_km) values ('Pegasus', 620, 700) returning id`)).id
+await db.query(`update runs set shoe_id = $1`, [shoe])
+const su = await one(`select km::float, runs::int from shoe_usage where shoe_id = $1`, [shoe])
+assert.deepEqual(su, { km: 631, runs: 2 })
+await db.exec(`insert into push_subscriptions (endpoint, p256dh, auth) values ('https://push.example/1', 'k', 'a')`)
+// authenticated เรียก notification_payload ไม่ได้
+await assert.rejects(db.query(`select public.notification_payload($1, '2026-10-06')`, [U1]))
+await db.exec(`reset role; set role service_role;`)
+await db.exec(`grant usage on schema public to service_role; grant select on all tables in schema public to service_role;`).catch(() => undefined)
+await db.exec(`reset role`)
+const np = (await one(`select public.notification_payload($1, '2026-10-06', true) as r`, [U1])).r
+assert.equal(np.plan.date, '2026-10-06')
+assert.equal(np.food_items, 1)
+assert.equal(np.weighed, false)
+assert.ok(np.goals.length >= 4)
+assert.equal(np.week_start, '2026-09-28')
+assert.equal(np.stats.active_days, 3)
+console.log('✓ shoe_usage', su, '· notification_payload', np.plan.activity, np.goals.length, 'goals')
+await as(U1)
+
 // ---- RLS ------------------------------------------------------------------
 await as(U2)
 assert.equal((await one(`select count(*)::int n from settings`)).n, 0)
@@ -230,6 +251,8 @@ assert.equal((await one(`select count(*)::int n from weekly_reviews`)).n, 0)
 assert.equal((await one(`select count(*)::int n from pr_events`)).n, 0)
 assert.equal((await one(`select count(*)::int n from foods`)).n, 0)
 assert.equal((await one(`select count(*)::int n from tdee_proposals`)).n, 0)
+assert.equal((await one(`select count(*)::int n from push_subscriptions`)).n, 0)
+assert.equal((await one(`select count(*)::int n from shoe_usage`)).n, 0)
 assert.equal((await one(`select count(*)::int n from run_plans where user_id is null`)).n, 5)
 await assert.rejects(db.query(`insert into body_weight (user_id, date, weight_kg) values ($1, '2026-10-01', 70)`, [U1]))
 await assert.rejects(db.query(`update run_plan_days set title = 'hack' where day_no = 1 returning id`).then((r) => {
