@@ -1,15 +1,8 @@
 import Dexie, { type Table } from 'dexie'
-import type { TableName } from '@/types/database'
+import type { RemoteOp } from '@/lib/store'
 
-export interface QueuedOp {
+export interface QueuedOp extends RemoteOp {
   seq?: number
-  table: TableName
-  op: 'upsert' | 'update' | 'delete'
-  /** upsert: rows[], update: patch, delete: null */
-  payload: unknown
-  /** update/delete: id ของแถว */
-  ids?: string[]
-  onConflict?: string
   createdAt: number
   tries: number
   lastError?: string
@@ -17,14 +10,22 @@ export interface QueuedOp {
 
 export interface Draft { key: string; value: unknown; updatedAt: number }
 export interface KV { key: string; value: unknown }
+export interface RecordRow { t: string; id: string; row: Record<string, unknown> }
 
 class OfflineDb extends Dexie {
   queue!: Table<QueuedOp, number>
   drafts!: Table<Draft, string>
   kv!: Table<KV, string>
+  records!: Table<RecordRow, [string, string]>
   constructor() {
     super('workout-log')
     this.version(1).stores({ queue: '++seq, table, createdAt', drafts: 'key', kv: 'key' })
+    // v2: ย้ายไป Google Sheet — เก็บข้อมูลทั้งหมดในเครื่อง, ล้างคิวของ Supabase เดิม
+    this.version(2).stores({ queue: '++seq, table, createdAt', drafts: 'key', kv: 'key', records: '[t+id], t' })
+      .upgrade(async (tx) => {
+        await tx.table('queue').clear()
+        await tx.table('kv').clear()
+      })
   }
 }
 

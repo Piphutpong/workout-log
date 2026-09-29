@@ -1,8 +1,11 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
-import { supabase, supabaseConfigured } from '@/lib/supabase'
-import { qk, useSettings } from '@/lib/api'
+import { backendConfigured } from '@/lib/backend'
+import { useSettings } from '@/lib/api'
+import { store } from '@/lib/store'
+import { pullAll, upsertRows } from '@/lib/offline/queue'
+import { bootstrapRows } from '@/lib/engine/seed'
+import type { TableName } from '@/types/database'
 import { todayIso } from '@/lib/date'
 import { Button, ErrorBox, Spinner } from '@/components/ui'
 import { Layout } from '@/components/Layout'
@@ -39,29 +42,39 @@ function Gate() {
   return <SignedIn />
 }
 
-/** ครั้งแรกหลังล็อกอิน: สร้างข้อมูลตั้งต้น (bootstrap_user) แล้วเข้า onboarding */
+/** ครั้งแรก: ดึงข้อมูลจาก Sheet ถ้าในเครื่องยังว่าง → ถ้า Sheet ก็ยังว่าง สร้างข้อมูลตั้งต้นแล้วเข้า onboarding */
 function SignedIn() {
-  const qc = useQueryClient()
   const settings = useSettings()
-  const [bootError, setBootError] = useState<unknown>(null)
-  const booting = useRef(false)
+  const [error, setError] = useState<unknown>(null)
+  const [attempt, setAttempt] = useState(0)
+  const running = useRef(false)
 
   useEffect(() => {
-    if (settings.isSuccess && settings.data === null && !booting.current) {
-      booting.current = true
-      void supabase.rpc('bootstrap_user', { p_start_date: todayIso() }).then(({ error }) => {
-        if (error) setBootError(error)
-        else void qc.invalidateQueries({ queryKey: qk.settings })
-      })
-    }
-  }, [settings.isSuccess, settings.data, qc])
+    if (settings.data || running.current) return
+    running.current = true
+    void (async () => {
+      try {
+        if (!store.hasData) await pullAll()
+        if (!store.hasData) {
+          const seed = bootstrapRows(todayIso())
+          for (const [t, rows] of Object.entries(seed)) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if (rows?.length) await upsertRows(t as TableName, rows as any)
+          }
+        }
+      } catch (e) {
+        setError(e)
+      } finally {
+        running.current = false
+      }
+    })()
+  }, [settings.data, attempt])
 
-  if (bootError) return <div className="p-4"><ErrorBox error={bootError} /></div>
-  if (settings.error && !settings.data) {
+  if (error && !settings.data) {
     return (
       <div className="space-y-3 p-4">
-        <ErrorBox error={settings.error} />
-        <Button onClick={() => void settings.refetch()}>ลองใหม่</Button>
+        <ErrorBox error={error} />
+        <Button onClick={() => { setError(null); setAttempt(attempt + 1) }}>ลองใหม่</Button>
       </div>
     )
   }
@@ -100,12 +113,12 @@ function SignedIn() {
 }
 
 export default function App() {
-  if (!supabaseConfigured) {
+  if (!backendConfigured) {
     return (
       <div className="mx-auto max-w-md p-6">
-        <h1 className="text-xl font-bold">ยังไม่ได้ตั้งค่า Supabase</h1>
+        <h1 className="text-xl font-bold">ยังไม่ได้ตั้งค่า Google Sheet</h1>
         <p className="mt-2 text-slate-600 dark:text-slate-400">
-          คัดลอก <code>.env.example</code> เป็น <code>.env</code> แล้วใส่ VITE_SUPABASE_URL และ VITE_SUPABASE_ANON_KEY (ดู README)
+          ใส่ URL ของ Apps Script Web App ใน <code>.env</code> เป็น VITE_GAS_URL (ดู README)
         </p>
       </div>
     )

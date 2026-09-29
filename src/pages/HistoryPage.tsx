@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { dk, invalidateDash, qk, useExercises, usePrograms } from '@/lib/api'
-import { supabase } from '@/lib/supabase'
+import { useQueryClient } from '@tanstack/react-query'
+import { invalidateDash, qk, useExercises, useLocal, usePrograms } from '@/lib/api'
+import { store } from '@/lib/store'
 import { fmtDuration, fmtPace, parseDuration } from '@/lib/calc'
 import { addDays, fmtLongDate, todayIso } from '@/lib/date'
 import { deleteRows, updateRows } from '@/lib/offline/queue'
@@ -23,34 +23,22 @@ const TABLE: Record<Kind, TableName> = {
 
 interface Item { kind: Kind; id: string; date: string; title: string; sub: string; row: Record<string, unknown> }
 
-function must<T>(r: { data: T | null; error: { message: string } | null }): T {
-  if (r.error) throw new Error(r.error.message)
-  return (r.data ?? []) as T
-}
-
 function useHistory(days: number) {
-  return useQuery({
-    queryKey: [...dk.all, 'history', days],
-    queryFn: async () => {
-      const from = addDays(todayIso(), -days)
-      const [ws, sets, runs, bw, comp, ck, pain, photos, food] = await Promise.all([
-        supabase.from('weight_sessions').select('*').gte('date', from),
-        supabase.from('weight_sets').select('*').gte('date', from).order('set_no'),
-        supabase.from('runs').select('*').gte('date', from),
-        supabase.from('body_weight').select('*').gte('date', from),
-        supabase.from('body_comp').select('*').gte('date', from),
-        supabase.from('daily_checkin').select('*').gte('date', from),
-        supabase.from('pain_log').select('*').gte('date', from),
-        supabase.from('progress_photos').select('*').gte('date', from),
-        supabase.from('food_log').select('*').gte('date', from).order('created_at'),
-      ])
-      return {
-        sessions: must(ws) as WeightSession[], sets: must(sets) as WeightSet[], runs: must(runs) as Run[],
-        bw: must(bw) as BodyWeight[], comp: must(comp) as BodyComp[], checkins: must(ck) as DailyCheckin[],
-        pain: must(pain) as PainLog[], photos: must(photos) as ProgressPhoto[], food: must(food) as FoodLog[],
-      }
-    },
-  })
+  return useLocal(() => {
+    const from = addDays(todayIso(), -days)
+    const since = <T extends { date: string }>(l: T[]) => l.filter((r) => r.date >= from)
+    return {
+      sessions: since(store.rows('weight_sessions')) as WeightSession[],
+      sets: since(store.rows('weight_sets')).sort((x, y) => x.set_no - y.set_no) as WeightSet[],
+      runs: since(store.rows('runs')) as Run[],
+      bw: since(store.rows('body_weight')) as BodyWeight[],
+      comp: since(store.rows('body_comp')) as BodyComp[],
+      checkins: since(store.rows('daily_checkin')) as DailyCheckin[],
+      pain: since(store.rows('pain_log')) as PainLog[],
+      photos: since(store.rows('progress_photos')) as ProgressPhoto[],
+      food: since(store.rows('food_log')).sort((x, y) => x.created_at.localeCompare(y.created_at)) as FoodLog[],
+    }
+  }, [days])
 }
 
 export function HistoryPage() {

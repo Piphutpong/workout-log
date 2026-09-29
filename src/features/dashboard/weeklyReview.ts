@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { dk, useGoals, useSettings, useWeeklyReviews } from '@/lib/api'
-import { supabase } from '@/lib/supabase'
+import { store } from '@/lib/store'
+import { weeklyReviewStats } from '@/lib/engine/stats'
 import { addDays, todayIso, weekStart } from '@/lib/date'
 import { upsertRows } from '@/lib/offline/queue'
 import { evaluateWeek } from '@/lib/rules'
@@ -12,9 +13,7 @@ export function losingWeight(goals: Goal[] | undefined) {
 }
 
 export async function computeReview(ws: string, losing: boolean) {
-  const { data, error } = await supabase.rpc('weekly_review_stats', { p_week_start: ws })
-  if (error) throw new Error(error.message)
-  const stats = data as unknown as WeeklyReviewStats
+  const stats: WeeklyReviewStats = weeklyReviewStats(store.db, ws)
   const r = evaluateWeek(stats, { losingWeight: losing })
   return { stats, good: r.good.map((m) => m.text), improve: r.improve.map((m) => m.text) }
 }

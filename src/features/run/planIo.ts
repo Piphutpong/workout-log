@@ -1,4 +1,4 @@
-// Import/Export แผนวิ่งเป็น JSON (รูปแบบเดียวกับ supabase/seed_run_plans.json)
+// Import/Export แผนวิ่งเป็น JSON (รูปแบบเดียวกับ src/data/run-plans.json)
 import { z } from 'zod'
 import { upsertRows, uuid } from '@/lib/offline/queue'
 import type { RunPlan, RunPlanDay, Segment, WorkoutType } from '@/types/database'

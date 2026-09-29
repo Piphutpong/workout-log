@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { qk, useShoes } from '@/lib/api'
-import { supabase } from '@/lib/supabase'
+import { useQueryClient } from '@tanstack/react-query'
+import { qk, useLocal, useShoes } from '@/lib/api'
+import { store } from '@/lib/store'
+import { shoeUsage } from '@/lib/engine/stats'
 import { fmtDate, todayIso } from '@/lib/date'
 import { deleteRows, updateRows, upsertRows } from '@/lib/offline/queue'
 import { Badge, Button, Card, Empty, ErrorBox, Input, PageTitle, ProgressBar, Spinner } from '@/components/ui'
@@ -9,14 +10,7 @@ import { confirmDialog, Modal } from '@/components/overlay'
 import type { Shoe, ShoeUsage } from '@/types/database'
 
 export function useShoeUsage() {
-  return useQuery({
-    queryKey: ['dash', 'shoe_usage'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('shoe_usage').select('*')
-      if (error) throw new Error(error.message)
-      return new Map((data as ShoeUsage[]).map((u) => [u.shoe_id, u]))
-    },
-  })
+  return useLocal<Map<string, ShoeUsage>>(() => shoeUsage(store.db))
 }
 
 /** รองเท้าที่ใช้ไป ≥ 90% ของระยะเปลี่ยน */

@@ -1,6 +1,5 @@
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { buildEvening, buildMorning, buildWeekly, dueKinds, type NotifySettings, type Payload } from './messages.ts'
+import { buildEvening, buildMorning, buildWeekly, dueKinds, type NotifySettings, type Payload } from './messages'
 
 const settings: NotifySettings = { notify_email: true, notify_push: false, notify_weekly: true, notify_morning_time: '06:30:00', notify_evening_time: '20:30:00' }
 const base: Payload = {
@@ -57,13 +56,5 @@ describe('ข้อความ', () => {
       },
     }, 'https://x/')
     expect(w2.improve[0]).toContain('ระยะวิ่งเพิ่ม 50%')
-  })
-})
-
-describe('กฎชุดเดียวกับแอป', () => {
-  it('supabase/functions/_shared/rules.ts ตรงกับ src/lib/rules.ts (รัน npm run shared:sync)', () => {
-    const a = readFileSync('src/lib/rules.ts', 'utf8')
-    const b = readFileSync('supabase/functions/_shared/rules.ts', 'utf8')
-    expect(b).toBe(a)
   })
 })

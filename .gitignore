@@ -7,3 +7,4 @@ dev-dist
 supabase/.temp
 supabase/.branches
 backup*.json
+secrets-for-github.txt

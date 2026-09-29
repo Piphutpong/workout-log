@@ -1,5 +1,5 @@
-// สร้างข้อความแจ้งเตือน (ไม่มี Deno/Node API — ทดสอบด้วย vitest ได้: supabase/functions/_shared/messages.test.ts)
-import { evaluateWeek, type WeeklyReviewStats } from './rules.ts'
+// สร้างข้อความแจ้งเตือน (ใช้ทั้งในแอปและ GitHub Actions: scripts/notify.ts)
+import { evaluateWeek, type WeeklyReviewStats } from '@/lib/rules'
 
 export type Kind = 'morning' | 'evening' | 'weekly'
 

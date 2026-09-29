@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { qk, useSettings } from '@/lib/api'
-import { supabase } from '@/lib/supabase'
+import { call } from '@/lib/backend'
+import { store } from '@/lib/store'
+import { todayIso } from '@/lib/date'
+import { notificationPayload } from '@/lib/engine/stats'
+import { buildEvening, buildMorning, buildWeekly, type Payload } from '@/lib/notify/messages'
 import { updateRows } from '@/lib/offline/queue'
 import { currentSubscription, disablePush, enablePush, pushSupported } from '@/lib/push'
 import { Button, Card, Input } from '@/components/ui'
@@ -55,12 +59,21 @@ export function NotificationSettings() {
   const test = async (kind: 'morning' | 'evening' | 'weekly') => {
     setBusy(true)
     try {
-      const { data, error } = await supabase.functions.invoke('notify', { body: { test: kind } })
-      if (error) throw error
-      const r = data as { channels?: string[]; errors?: Record<string, string>; skipped?: string; error?: string }
-      if (r.error) throw new Error(r.error)
-      const errs = Object.entries(r.errors ?? {}).map(([k, v]) => `${k}: ${v}`)
-      toast(r.channels?.length ? `ส่งแล้วทาง ${r.channels.join(', ')}${errs.length ? ` · ${errs.join('; ')}` : ''}` : errs.join('; ') || r.skipped || 'ไม่ได้ส่ง', { ms: 6000 })
+      const appUrl = location.href.split('#')[0]
+      const p = notificationPayload(store.db, todayIso(), kind === 'weekly') as unknown as Payload
+      const m = kind === 'morning' ? buildMorning(p, appUrl) : kind === 'evening' ? buildEvening(p, appUrl) : buildWeekly(p, appUrl)
+      if (!m) return toast('ค่ำนี้บันทึกครบแล้ว ไม่มีอะไรต้องเตือน 👍')
+      const sent: string[] = []
+      if (s.notify_email) {
+        const r = await call<{ to: string }>('send_email', { subject: `[ทดสอบ] ${m.title}`, html: m.html, text: m.body })
+        sent.push(`อีเมล (${r.to})`)
+      }
+      if (s.notify_push && pushOn) {
+        const reg = await navigator.serviceWorker.ready
+        await reg.showNotification(m.title, { body: m.body, icon: 'pwa-192.png', tag: 'test' })
+        sent.push('แจ้งเตือนบนเครื่องนี้')
+      }
+      toast(sent.length ? `ส่งแล้ว: ${sent.join(', ')}` : 'เปิดอีเมลหรือ Web Push ก่อน', { ms: 6000 })
     } catch (e) {
       toast(`ส่งทดสอบไม่สำเร็จ: ${(e as Error).message}`, { ms: 6000 })
     } finally {

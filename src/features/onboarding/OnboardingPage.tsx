@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '@/lib/supabase'
-import { useSchedule, useSettings } from '@/lib/api'
+import { useLocal, useSchedule, useSettings } from '@/lib/api'
+import { store } from '@/lib/store'
+import { updateRows } from '@/lib/offline/queue'
 import { addDays, THAI_DOW } from '@/lib/date'
 import { rangeWarnings } from '@/lib/validation'
 import { Button, Card, ErrorBox, Input, Select, Spinner } from '@/components/ui'
 import { confirmWarnings } from '@/components/overlay'
 import { FREE_RUN_TEMPLATES } from '@/features/run/runMeta'
-import type { Activity, DayType, Goal, Json, NutritionTarget } from '@/types/database'
+import type { Activity, DayType, NutritionTarget } from '@/types/database'
 
 const DAY_TYPE_TH: Record<DayType, string> = { weight: 'วันเวท', run_easy: 'วิ่งเบา', run_hard: 'วิ่งหนัก', rest: 'วันพัก' }
 const ACTIVITY_TH: Record<Activity, string> = { weight: 'เวท', run: 'วิ่ง', rest: 'พัก', active_recovery: 'Active recovery' }
@@ -15,21 +15,12 @@ const ACTIVITY_TH: Record<Activity, string> = { weight: 'เวท', run: 'ว�
 interface SchedRow { id: string; day_of_week: number; activity: Activity; run_type: 'easy' | 'interval' | 'long' | null }
 
 export function OnboardingPage() {
-  const qc = useQueryClient()
   const settings = useSettings()
   const schedule = useSchedule()
-  const extra = useQuery({
-    queryKey: ['onboarding-extra'],
-    queryFn: async () => {
-      const [g, t] = await Promise.all([
-        supabase.from('goals').select('*').eq('metric', 'weight_kg').maybeSingle(),
-        supabase.from('nutrition_targets').select('*'),
-      ])
-      if (g.error) throw g.error
-      if (t.error) throw t.error
-      return { weightGoal: g.data as Goal | null, targets: t.data as NutritionTarget[] }
-    },
-  })
+  const extra = useLocal(() => ({
+    weightGoal: store.rows('goals').find((g) => g.metric === 'weight_kg') ?? null,
+    targets: store.rows('nutrition_targets'),
+  }))
 
   const [form, setForm] = useState({
     height_cm: '', birth_date: '', max_hr: '', program_start_date: '', target_weight_kg: '', target_date: '',
@@ -76,40 +67,36 @@ export function OnboardingPage() {
     setSaving(true)
     try {
       const s = settings.data!
-      const r1 = await supabase.from('settings').update({
+      const g = extra.data?.weightGoal
+      if (g) {
+        await updateRows('goals', [g.id], {
+          target_value: Number(form.target_weight_kg),
+          target_date: form.target_date || null,
+          start_date: form.program_start_date || g.start_date,
+          title: `น้ำหนัก ${Number(form.target_weight_kg).toFixed(1)} กก.`,
+        })
+      }
+      for (const row of sched) {
+        const tpl = row.activity === 'run' ? FREE_RUN_TEMPLATES[row.run_type ?? 'easy'] : null
+        await updateRows('weekly_schedule', [row.id], {
+          activity: row.activity,
+          run_type: row.activity === 'run' ? (row.run_type ?? 'easy') : null,
+          title: tpl?.title ?? null,
+          segments: tpl?.segments ?? [],
+        })
+      }
+      for (const t of targets) {
+        await updateRows('nutrition_targets', [t.id], { kcal: t.kcal, protein_g: t.protein_g, carb_g: t.carb_g, fat_g: t.fat_g })
+      }
+      // ตั้ง onboarded_at ท้ายสุด (หน้าจอจะเปลี่ยนไปหน้าแอปทันที)
+      await updateRows('settings', [s.id], {
         height_cm: Number(form.height_cm) || null,
         birth_date: form.birth_date || null,
         max_hr: Number(form.max_hr) || 186,
         program_start_date: form.program_start_date || null,
         target_weight_kg: Number(form.target_weight_kg) || null,
         onboarded_at: new Date().toISOString(),
-      }).eq('id', s.id)
-      if (r1.error) throw r1.error
-      const g = extra.data?.weightGoal
-      if (g) {
-        const r2 = await supabase.from('goals').update({
-          target_value: Number(form.target_weight_kg),
-          target_date: form.target_date || null,
-          start_date: form.program_start_date || g.start_date,
-          title: `น้ำหนัก ${Number(form.target_weight_kg).toFixed(1)} กก.`,
-        }).eq('id', g.id)
-        if (r2.error) throw r2.error
-      }
-      for (const row of sched) {
-        const tpl = row.activity === 'run' ? FREE_RUN_TEMPLATES[row.run_type ?? 'easy'] : null
-        const r = await supabase.from('weekly_schedule').update({
-          activity: row.activity,
-          run_type: row.activity === 'run' ? (row.run_type ?? 'easy') : null,
-          title: tpl?.title ?? null,
-          segments: (tpl?.segments ?? []) as unknown as Json,
-        }).eq('id', row.id)
-        if (r.error) throw r.error
-      }
-      for (const t of targets) {
-        const r = await supabase.from('nutrition_targets').update({ kcal: t.kcal, protein_g: t.protein_g, carb_g: t.carb_g, fat_g: t.fat_g }).eq('id', t.id)
-        if (r.error) throw r.error
-      }
-      await qc.invalidateQueries()
+      })
     } catch (e) {
       setError(e)
     } finally {

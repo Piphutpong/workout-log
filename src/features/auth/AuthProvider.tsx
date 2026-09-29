@@ -1,18 +1,30 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import type { Session } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
+import { createContext, useContext, useState, type ReactNode } from 'react'
+import { getKey, setKey } from '@/lib/backend'
+import { store } from '@/lib/store'
+import { offlineDb } from '@/lib/offline/db'
 
-interface AuthState { session: Session | null; loading: boolean }
-const AuthContext = createContext<AuthState>({ session: null, loading: true })
+interface AuthState {
+  session: boolean
+  loading: boolean
+  signIn: (key: string) => void
+  signOut: () => Promise<void>
+}
+const AuthContext = createContext<AuthState>({ session: false, loading: false, signIn: () => undefined, signOut: async () => undefined })
 
+/** "ล็อกอิน" = มีรหัสผ่าน (API_KEY ของ Apps Script) เก็บไว้ในเครื่อง */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>({ session: null, loading: true })
-  useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => setState({ session: data.session, loading: false }))
-    const { data } = supabase.auth.onAuthStateChange((_e, session) => setState({ session, loading: false }))
-    return () => data.subscription.unsubscribe()
-  }, [])
-  return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>
+  const [session, setSession] = useState(Boolean(getKey()))
+  const signIn = (key: string) => {
+    setKey(key)
+    setSession(true)
+  }
+  const signOut = async () => {
+    setKey(null)
+    await store.clear()
+    await offlineDb.queue.clear().catch(() => undefined)
+    setSession(false)
+  }
+  return <AuthContext.Provider value={{ session, loading: false, signIn, signOut }}>{children}</AuthContext.Provider>
 }
 
 export const useAuth = () => useContext(AuthContext)

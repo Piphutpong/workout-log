@@ -1,6 +1,4 @@
-// Types ของ schema ใน supabase/migrations (รูปแบบเดียวกับ `supabase gen types`)
-// เมื่อ link โปรเจกต์แล้วสามารถรัน `npm run gen:types` เพื่อสร้าง src/types/supabase.ts จากฐานข้อมูลจริง
-// แล้วเปลี่ยน import ใน src/lib/supabase.ts ไปใช้ไฟล์นั้นได้
+// Types ของข้อมูลแต่ละตาราง (คอลัมน์ต้องตรงกับ src/lib/schema.ts — ตรวจโดย src/types/schema-check.ts)
 
 type Base = { id: string; user_id: string; created_at: string; updated_at: string }
 type Nullable<T> = { [K in keyof T]: T[K] | null }

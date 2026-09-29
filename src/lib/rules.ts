@@ -1,6 +1,6 @@
 // กฎแจ้งเตือนและคำแนะนำอัตโนมัติ (ข้อ 6) — ไม่ใช้ AI
 // รับตัวเลขจาก weekly_review_stats() แล้วคืนข้อที่ทำได้ดี / ต้องปรับ เรียงตามความสำคัญ
-// ไฟล์นี้ต้องไม่มี import (ถูกคัดลอกไปใช้ใน Supabase Edge Function ด้วย: npm run shared:sync)
+// (ใช้ทั้งในแอปและ scripts/notify.ts ใน GitHub Actions)
 
 export interface WeeklyReviewStats {
   week_start: string

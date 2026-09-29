@@ -1,0 +1,49 @@
+name: Notifications
+
+# ตรวจทุก 15 นาที: ถึงเวลาเช้า/ค่ำ/สรุปวันจันทร์ที่ตั้งในแอป → ส่งอีเมล (Apps Script) + Web Push
+# (GitHub อาจเลื่อนรอบ cron ได้บ้าง จึงถือว่า "ถึงเวลา" ภายใน 3 ชม. หลังเวลาที่ตั้ง และส่งครั้งเดียวต่อวัน)
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'ส่งทดสอบทันที (morning / evening / weekly) — ว่าง = ตามเวลา'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notify
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - id: cfg
+        env:
+          URL: ${{ secrets.VITE_GAS_URL }}
+          KEY: ${{ secrets.GAS_KEY }}
+        run: |
+          if [ -n "$URL" ] && [ -n "$KEY" ]; then echo "ok=1" >> "$GITHUB_OUTPUT"; else echo "::notice::ยังไม่ได้ตั้ง secret VITE_GAS_URL / GAS_KEY — ข้าม"; fi
+      - if: steps.cfg.outputs.ok
+        uses: actions/checkout@v4
+      - if: steps.cfg.outputs.ok
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.cfg.outputs.ok
+        run: npm ci
+      - name: Send
+        if: steps.cfg.outputs.ok
+        env:
+          GAS_URL: ${{ secrets.VITE_GAS_URL }}
+          GAS_KEY: ${{ secrets.GAS_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          APP_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+          FORCE: ${{ github.event.inputs.force }}
+        run: npx tsx --tsconfig tsconfig.scripts.json scripts/notify.ts

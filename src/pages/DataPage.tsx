@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { supabase } from '@/lib/supabase'
+import { store } from '@/lib/store'
 import { cleanRow, EXPORT_FORMAT, EXPORT_TABLES, planImport, toCsv, type ExportFile, type ImportPlan } from '@/lib/dataio'
 import { todayIso } from '@/lib/date'
 import { upsertRows } from '@/lib/offline/queue'
@@ -10,19 +10,9 @@ import type { TableName } from '@/types/database'
 
 type Row = Record<string, unknown>
 
-/** ดึงทุกแถวของตาราง (แบ่งหน้า 1000) — แผนวิ่งเอาเฉพาะของผู้ใช้ ไม่รวมแผนระบบ */
+/** ทุกแถวของตาราง (จากข้อมูลในเครื่อง) — แผนวิ่งเอาเฉพาะของผู้ใช้ ไม่รวมแผนระบบ */
 async function fetchAll(table: TableName): Promise<Row[]> {
-  const out: Row[] = []
-  for (let from = 0; ; from += 1000) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let q = (supabase.from(table) as any).select('*').order('id').range(from, from + 999)
-    if (table === 'run_plans' || table === 'run_plan_days') q = q.not('user_id', 'is', null)
-    const { data, error } = await q
-    if (error) throw new Error(`${table}: ${error.message}`)
-    out.push(...(data as Row[]))
-    if ((data as Row[]).length < 1000) break
-  }
-  return out
+  return (store.rows(table) as unknown as Row[]).filter((r) => r.user_id != null)
 }
 
 function download(name: string, data: BlobPart, type: string) {

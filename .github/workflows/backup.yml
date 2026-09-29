@@ -1,6 +1,6 @@
 name: Weekly backup
 
-# export JSON ทุกวันจันทร์ 03:00 (เวลาไทย) เก็บเป็น artifact 90 วัน — ไม่ commit ข้อมูลลง repo
+# export JSON จาก Google Sheet ทุกวันจันทร์ 03:00 (เวลาไทย) เก็บเป็น artifact 90 วัน — ไม่ commit ข้อมูลลง repo
 on:
   schedule:
     - cron: '0 20 * * 0'
@@ -17,16 +17,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+      - run: npm ci
       - name: Export
         env:
-          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-            echo "::error::ยังไม่ได้ตั้ง secret SUPABASE_SERVICE_ROLE_KEY (ดู README)"
-            exit 1
-          fi
-          node scripts/backup.mjs
+          GAS_URL: ${{ secrets.VITE_GAS_URL }}
+          GAS_KEY: ${{ secrets.GAS_KEY }}
+        run: npx tsx --tsconfig tsconfig.scripts.json scripts/backup.ts
       - uses: actions/upload-artifact@v4
         with:
           name: workout-log-backup

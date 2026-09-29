@@ -1,9 +1,9 @@
 // Web Push (ตัวเลือกเสริม) — บน iPhone ต้องติดตั้งลงหน้าจอโฮมก่อน (iOS 16.4+)
-import { supabase } from './supabase'
-import { upsertRows } from './offline/queue'
+import { deleteRows, upsertRows } from './offline/queue'
+import { store } from './store'
 
-/** public key (เปิดเผยได้) คู่กับ VAPID_PRIVATE_KEY ใน Supabase secrets */
-export const VAPID_PUBLIC_KEY = 'BFw4gG2lAHnzk1651SKL2b6Ge1QD5NsVbwIcquYQWKu9eqUtNTGJ6Pc0nUCFVwrfBmdB77Qt9_K6ZUV0H0Qoubg'
+import { VAPID_PUBLIC_KEY } from './vapid'
+export { VAPID_PUBLIC_KEY }
 
 export function pushSupported() {
   return typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
@@ -35,6 +35,7 @@ export async function enablePush() {
 export async function disablePush() {
   const sub = await currentSubscription()
   if (!sub) return
-  await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint)
+  const ids = store.rows('push_subscriptions').filter((s) => s.endpoint === sub.endpoint).map((s) => s.id)
+  if (ids.length) await deleteRows('push_subscriptions', ids)
   await sub.unsubscribe()
 }

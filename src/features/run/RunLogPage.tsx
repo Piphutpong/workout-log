@@ -8,7 +8,7 @@ import { invalidateDash, qk, useLastRunByType, useRecentRuns, useSettings, useSh
 import { bpmToPct, fmtDuration, fmtPace, hrStatus, paceDelta, paceSecPerKm, parseDuration, planHrRange } from '@/lib/calc'
 import { fmtDate, fmtDayMonth, nowTime, todayIso } from '@/lib/date'
 import { updateRows, upsertRows, uuid } from '@/lib/offline/queue'
-import { supabase } from '@/lib/supabase'
+import { store } from '@/lib/store'
 import { currentPosition, fetchWeather } from '@/lib/weather'
 import { optionalNumber, rangeWarnings } from '@/lib/validation'
 import { Badge, Button, Card, Input, PageTitle, Segmented, Select, Spinner, Textarea, cx } from '@/components/ui'
@@ -131,7 +131,7 @@ export function RunLogPage() {
   const onFile = async (file: File) => {
     try {
       const r = await parseRunFile(file)
-      const { data: dup } = await supabase.from('runs').select('id, date').eq('source', r.source).eq('external_id', r.external_id).maybeSingle()
+      const dup = store.rows('runs').find((x) => x.source === r.source && x.external_id === r.external_id)
       if (dup) return toast(`ไฟล์นี้เคย import แล้ว (${fmtDate(r.date)})`)
       setImported(r)
       setValue('date', r.date)

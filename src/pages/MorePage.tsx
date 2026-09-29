@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { qk, useSettings } from '@/lib/api'
-import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/features/auth/AuthProvider'
 import { updateRows } from '@/lib/offline/queue'
 import { clearFailedOps, failedOps } from '@/lib/offline/queue'
 import type { QueuedOp } from '@/lib/offline/db'
@@ -19,7 +19,7 @@ export function MorePage() {
   const sync = useSyncQueue()
   const [f, setF] = useState({ max_hr: '', default_rest_sec: '', weight_step_lb: '', pinned: '' })
   const [failed, setFailed] = useState<QueuedOp[]>([])
-  const [email, setEmail] = useState('')
+  const { signOut } = useAuth()
 
   useEffect(() => {
     const s = settings.data
@@ -27,7 +27,6 @@ export function MorePage() {
   }, [settings.data])
   useEffect(() => {
     void failedOps().then(setFailed)
-    void supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ''))
   }, [sync.failed])
 
   if (settings.isLoading || !settings.data) return <Spinner />
@@ -47,7 +46,7 @@ export function MorePage() {
 
   const logout = async () => {
     if (sync.pending && !(await confirmDialog(`ยังมี ${sync.pending} รายการรอส่ง ถ้าออกจากระบบตอนนี้อาจส่งไม่ได้ ออกจากระบบต่อ?`, { danger: true }))) return
-    await supabase.auth.signOut()
+    await signOut()
     qc.clear()
   }
 
@@ -100,11 +99,11 @@ export function MorePage() {
             <Button size="sm" variant="ghost" onClick={async () => { await clearFailedOps(); setFailed([]) }}>ล้างรายการ</Button>
           </div>
         )}
-        <Button className="mt-2" variant="secondary" disabled={!sync.online} onClick={() => void sync.syncNow()}>ส่งตอนนี้</Button>
+        <Button className="mt-2" variant="secondary" disabled={!sync.online} onClick={() => void sync.syncNow()}>ซิงก์ตอนนี้</Button>
       </Card>
 
       <Card title="บัญชี">
-        <p className="mb-2 text-sm text-slate-500">{email}</p>
+        <p className="mb-2 text-sm text-slate-500">ข้อมูลเก็บใน Google Sheet ของคุณ · ออกจากระบบจะล้างข้อมูลในเครื่องนี้ (ข้อมูลใน Sheet ยังอยู่)</p>
         <Button variant="danger" onClick={logout}>ออกจากระบบ</Button>
       </Card>
 

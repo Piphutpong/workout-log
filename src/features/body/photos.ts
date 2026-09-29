@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
-import { supabase, currentUserId } from '@/lib/supabase'
-import { uuid } from '@/lib/offline/queue'
+import { call } from '@/lib/backend'
 
-export const BUCKET = 'progress-photos'
+// รูปเก็บในโฟลเดอร์ส่วนตัว "Workout Log Photos" ใน Google Drive ของคุณ (storage_path = Drive file id)
 export const ANGLE_TH = { front: 'ด้านหน้า', side: 'ด้านข้าง', back: 'ด้านหลัง' } as const
 export type Angle = keyof typeof ANGLE_TH
 
@@ -21,33 +20,35 @@ export async function resizeImage(file: File, maxWidth = 1080, quality = 0.8): P
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('แปลงรูปไม่สำเร็จ'))), 'image/jpeg', quality))
 }
 
-/** อัปโหลดไปที่ <user_id>/<date>_<angle>_<uuid>.jpg คืน storage path */
+async function toBase64(blob: Blob): Promise<string> {
+  const buf = new Uint8Array(await blob.arrayBuffer())
+  let bin = ''
+  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000))
+  return btoa(bin)
+}
+
+/** อัปโหลดไป Google Drive คืน file id */
 export async function uploadPhoto(blob: Blob, date: string, angle: Angle): Promise<string> {
   if (!navigator.onLine) throw new Error('อัปโหลดรูปต้องออนไลน์')
-  const uid = await currentUserId()
-  const path = `${uid}/${date}_${angle}_${uuid()}.jpg`
-  const { error } = await supabase.storage.from(BUCKET).upload(path, blob, { contentType: 'image/jpeg', upsert: false })
-  if (error) throw new Error(error.message)
-  return path
+  const res = await call<{ id: string }>('photo_put', { base64: await toBase64(blob), mime: 'image/jpeg', name: `${date}_${angle}.jpg` })
+  return res.id
 }
 
-export async function removePhoto(path: string) {
-  const { error } = await supabase.storage.from(BUCKET).remove([path])
-  if (error) throw new Error(error.message)
+export async function removePhoto(id: string) {
+  await call('photo_delete', { id })
 }
 
-/** signed URL (private bucket) อายุ 1 ชม. */
-export function useSignedUrls(paths: string[]) {
-  const key = [...paths].sort().join('|')
+/** ดึงรูปจาก Drive เป็น data URL (cache ไว้ 1 ชม.) */
+export function useSignedUrls(ids: string[]) {
+  const key = [...ids].sort().join('|')
   return useQuery({
-    queryKey: ['signed-urls', key],
-    enabled: paths.length > 0,
-    staleTime: 50 * 60 * 1000,
-    gcTime: 55 * 60 * 1000,
+    queryKey: ['photos', key],
+    enabled: ids.length > 0 && navigator.onLine,
+    staleTime: 60 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
     queryFn: async () => {
-      const { data, error } = await supabase.storage.from(BUCKET).createSignedUrls(paths, 3600)
-      if (error) throw new Error(error.message)
-      return new Map<string, string>((data ?? []).filter((d) => d.signedUrl).map((d) => [d.path ?? '', d.signedUrl as string]))
+      const res = await call<{ photos: Record<string, string | null> }>('photo_get', { ids })
+      return new Map<string, string>(Object.entries(res.photos).filter((e): e is [string, string] => Boolean(e[1])))
     },
   })
 }

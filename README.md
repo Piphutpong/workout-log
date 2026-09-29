@@ -2,18 +2,21 @@
 
 เว็บแอป (PWA) บันทึกการออกกำลังกาย แผนวิ่ง โภชนาการ และพัฒนาการของร่างกาย สำหรับผู้ใช้คนเดียว
 
-- React + Vite + TypeScript + Tailwind, TanStack Query, React Hook Form + Zod
-- Supabase (PostgreSQL + Auth + Storage) แพ็กเกจฟรี — ใช้แค่ anon key + Row Level Security
-- Deploy บน GitHub Pages ผ่าน GitHub Actions, ติดตั้งลงหน้าจอหลักได้ (PWA) และบันทึกแบบออฟไลน์ได้
+- React + Vite + TypeScript + Tailwind, React Hook Form + Zod, Chart.js
+- **ฐานข้อมูล = Google Sheet** (1 แท็บต่อ 1 ตาราง) ผ่าน Google Apps Script Web App · รูปเก็บใน Google Drive (โฟลเดอร์ส่วนตัว)
+- แอปเก็บข้อมูลทั้งหมดไว้ในเครื่อง (IndexedDB) คำนวณทุกอย่างในเครื่อง แล้วซิงก์กับ Sheet → เปิดเร็วและใช้ออฟไลน์ได้เต็มที่
+- Sheet มีไว้**ดูอย่างเดียว** — แก้ข้อมูลในแอปเท่านั้น (ถ้าแก้ใน Sheet ตรงๆ อาจถูกค่าจากแอปทับ)
+- Deploy บน GitHub Pages ผ่าน GitHub Actions · แจ้งเตือนอีเมล/Push และ backup รายสัปดาห์ด้วย GitHub Actions (ฟรีทั้งหมด)
 
 > **สถานะ:**
-> - Phase 1 ✅ วันนี้, น้ำหนักตัว, บันทึกเวท, จัดการโปรแกรม, บันทึกวิ่ง, แผนวิ่ง, interval timer, offline queue
+> - Phase 1 ✅ วันนี้, น้ำหนักตัว, บันทึกเวท, จัดการโปรแกรม, บันทึกวิ่ง, แผนวิ่ง, interval timer, ออฟไลน์
 > - Phase 2 ✅ Dashboard, เป้าหมาย, กราฟความก้าวหน้า, ประวัติ (แก้/ลบ/Undo), Check-in, อาการเจ็บ, Body comp, รูปความก้าวหน้า,
 >   สรุปรายสัปดาห์ตามกฎข้อ 6, PR/Achievements, โปรแกรม "กระชับกล้ามเนื้อ (นายแบบ)" 3 วันจากหนังสือ
 > - Phase 3 ✅ คลังอาหารไทย 95 รายการ (ค่าประมาณ), บันทึกอาหาร ≤ 3 แตะ, เหมือนเมื่อวาน/meal template/Quick add,
 >   สแกนบาร์โค้ด (Open Food Facts), สูตรอาหาร, เป้าตามประเภทวัน, คำแนะนำตามส่วนที่ขาด, น้ำ, อาหารเสริม, Adaptive TDEE, กราฟโภชนาการ
 > - Phase 4 ✅ รองเท้า (เตือน 90%), อุณหภูมิ/ความชื้นจาก Open-Meteo, import .gpx/.fit/.tcx พร้อม splits, deload, แก้ warm-up,
->   คลังท่า, แจ้งเตือนตามกฎข้อ 6, อีเมล (Resend) + Web Push ผ่าน Edge Function + pg_cron, Export JSON/CSV, Import JSON, backup รายสัปดาห์
+>   คลังท่า, แจ้งเตือนตามกฎข้อ 6, อีเมล + Web Push, Export JSON/CSV, Import JSON, backup รายสัปดาห์
+> - ✅ ย้ายจาก Supabase ไป Google Sheet (โค้ด Supabase เดิมเก็บไว้ใน `archive/supabase/`)
 
 ---
 
@@ -21,19 +24,21 @@
 
 ```
 src/
-  pages/           หน้าทั่วไป (เพิ่มเติม/ตั้งค่า)
-  components/      UI กลาง (ปุ่ม, การ์ด, modal, ลากเรียงลำดับ)
-  features/
-    auth/ onboarding/ today/ workout/ run/   ← Phase 1
-    nutrition/ body/ goals/ dashboard/        ← Phase 2-3
-  lib/             supabase client, calc (สูตร), date (Asia/Bangkok), offline (IndexedDB queue)
-  types/           database.ts (types ของ schema)
-supabase/
-  migrations/      SQL migration (ห้ามแก้ไฟล์เดิม ให้เพิ่มไฟล์ใหม่)
-  seed.sql         แผนวิ่ง FASTBULL (สร้างจาก seed_run_plans.json)
-  seed_run_plans.json
-  RUN_PLANS_REVIEW.md   วันที่ต้องตรวจสอบ
-scripts/           build-run-plans, build-seed-sql, check-migrations (PGlite), gen-icons
+  pages/ components/ features/   หน้าจอและ UI
+  lib/
+    schema.ts        รายการตาราง/คอลัมน์/ชนิดข้อมูล (แหล่งความจริงเดียว — ใช้สร้าง Apps Script ด้วย)
+    engine/          ตรรกะทั้งหมด (แผนวันนี้, สถิติ, PR, TDEE, สรุปสัปดาห์, ข้อมูลตั้งต้น) — คำนวณในเครื่อง
+    store.ts         ข้อมูลในเครื่อง (IndexedDB) + ค่า default, unique key, ลบต่อเนื่อง (cascade)
+    offline/         คิวส่งข้อมูลไป Sheet และซิงก์
+    backend.ts       เรียก Apps Script
+    notify/          ข้อความแจ้งเตือน (ใช้ร่วมกับ scripts/notify.ts)
+  data/              แผนวิ่ง FASTBULL (run-plans.json, อ่านอย่างเดียว), คลังอาหารตั้งต้น
+gas/
+  Code.template.js   โค้ด Apps Script → `npm run gas:build` สร้าง gas/Code.gs สำหรับวาง
+  emulator.ts        Apps Script + Sheet จำลองสำหรับทดสอบในเครื่อง
+scripts/             notify.ts (แจ้งเตือน), backup.ts, migrate-supabase.ts, build-gas.ts, build-run-plans.mjs
+docs/                RUN_PLANS_REVIEW.md, FOODS_REVIEW.md (วัน/อาหารที่ควรตรวจสอบ)
+.github/workflows/   deploy.yml, notify.yml (ทุก 15 นาที), backup.yml (รายสัปดาห์)
 ```
 
 ---
@@ -55,155 +60,128 @@ node -v   # ควรเป็น v20 ขึ้นไป
 git --version
 ```
 
-**Supabase CLI** ติดตั้งมากับโปรเจกต์แล้ว (เรียกผ่าน `npx supabase ...`) ไม่ต้องติดตั้งแยก
-
 ### 2. ติดตั้ง dependency
 
 ```powershell
 cd "D:\OneDrive\Claude\Claude Code\ExerciseTracking"
 npm install
+npm run gas:build     # สร้าง gas\Code.gs
 ```
 
-### 3. สร้างโปรเจกต์ Supabase
-1. สมัคร/ล็อกอินที่ https://supabase.com → **New project**
-2. ตั้งชื่อ เช่น `workout-log`, Region **Southeast Asia (Singapore)**, ตั้ง Database password (จดไว้)
-3. รอสร้างเสร็จ แล้วไปที่ **Project Settings → General** จด **Reference ID** (เช่น `abcdxyz123`)
-4. ไปที่ **Project Settings → API** จด **Project URL** และ **anon public key**
-   (อย่าใช้ `service_role` key ในแอปเด็ดขาด)
+### 3. สร้าง Google Sheet + Apps Script
+1. ไปที่ <https://sheets.new> (ล็อกอิน Google บัญชีที่จะใช้) → ตั้งชื่อไฟล์ เช่น **Workout Log**
+2. เมนู **ส่วนขยาย → Apps Script**
+3. ลบโค้ดเดิมใน `Code.gs` ทั้งหมด → เปิดไฟล์ `gas\Code.gs` ในโปรเจกต์ (Notepad/VS Code) → คัดลอกทั้งหมดไปวาง → กด 💾 บันทึก
+4. ⚙️ **การตั้งค่าโปรเจกต์** (Project Settings) → เลื่อนลงล่าง **Script properties** → **เพิ่มพร็อพเพอร์ตี้ของสคริปต์**
+   - พร็อพเพอร์ตี้: `API_KEY`
+   - ค่า: รหัสผ่านยาวๆ ที่เดายาก (≥ 20 ตัว) — **รหัสนี้ใช้ล็อกอินแอป** สร้างได้ด้วย:
+     ```powershell
+     node -e "console.log(require('crypto').randomBytes(18).toString('base64url'))"
+     ```
+5. ปุ่ม **ทำให้ใช้งานได้ (Deploy) → การทำให้ใช้งานได้รายการใหม่ (New deployment)** → ⚙️ เลือกประเภท **เว็บแอป**
+   - ดำเนินการในฐานะ (Execute as): **ฉัน (Me)**
+   - ผู้ที่มีสิทธิ์เข้าถึง (Who has access): **ทุกคน (Anyone)** — ปลอดภัยเพราะทุกคำขอต้องมี API_KEY
+   - กด **ทำให้ใช้งานได้** → **ให้สิทธิ์เข้าถึง** → เลือกบัญชี → ถ้าขึ้น "Google hasn't verified this app" กด **ขั้นสูง → ไปที่ ... (ไม่ปลอดภัย)** → **อนุญาต**
+     (สิทธิ์ที่ขอ: Sheet ไฟล์นี้, สร้างโฟลเดอร์รูปใน Drive, ส่งอีเมลถึงตัวเอง)
+6. คัดลอก **URL ของเว็บแอป** (ลงท้ายด้วย `/exec`)
 
-### 4. รัน migration + seed
+แท็บ (ตาราง) จะถูกสร้างเองเมื่อมีข้อมูลครั้งแรก · รูปความก้าวหน้าเก็บในโฟลเดอร์ Drive **Workout Log Photos** (ส่วนตัว)
 
-```powershell
-npx supabase login
-npx supabase link --project-ref <Reference ID>
-npx supabase db push --include-seed
-```
+> **แก้โค้ด Apps Script ภายหลัง:** วาง `gas\Code.gs` ใหม่ → **ทำให้ใช้งานได้ → จัดการการทำให้ใช้งานได้** → ✏️ → เวอร์ชัน **ใหม่** → ทำให้ใช้งานได้ (URL เดิมไม่เปลี่ยน)
 
-- `db push` จะสร้างตารางทั้งหมด, RLS, views/functions, ฟังก์ชัน `bootstrap_user` และ Storage bucket
-- `--include-seed` จะใส่แผนวิ่ง FASTBULL ทั้ง 5 แผน (434 วัน) จาก `supabase/seed.sql`
-
-> **ทางเลือก (ไม่ใช้ CLI):** เปิด Supabase → **SQL Editor** แล้ววางเนื้อหาไฟล์ใน `supabase/migrations/` ทีละไฟล์ตามลำดับชื่อ กด Run
-> จากนั้นวาง `supabase/seed.sql` แล้ว Run
-
-ข้อมูลส่วนตัว (ส่วนสูง, InBody, เป้าหมาย, โปรแกรม A/B/Rehab, ตารางสัปดาห์, เป้าโภชนาการ, อาหารเสริม) จะถูกสร้าง**อัตโนมัติ**ตอนล็อกอินครั้งแรก
-
-### 5. สร้างผู้ใช้
-1. Supabase → **Authentication → Users → Add user → Create new user**
-2. ใส่อีเมล + รหัสผ่าน ติ๊ก **Auto Confirm User**
-3. (แนะนำ) **Authentication → Sign In / Providers** ปิด **Allow new users to sign up** เพื่อไม่ให้คนอื่นสมัครได้
-4. **Authentication → URL Configuration** ตั้ง **Site URL** เป็น URL ของ GitHub Pages (ขั้นที่ 9)
-
-### 6. ตั้งค่า Storage
-migration สร้าง bucket `progress-photos` แบบ **private** ให้แล้ว พร้อม policy ให้เข้าถึงได้เฉพาะโฟลเดอร์ `<user_id>/` ของตัวเอง
-ตรวจที่ **Storage** ว่ามี bucket นี้และไม่ได้ติ๊ก Public (ใช้ใน Phase 2)
-
-### 7. ตั้งค่า .env
+### 4. ตั้งค่า .env (ใช้ตอนรันบนเครื่อง)
 
 ```powershell
 Copy-Item .env.example .env
 notepad .env
 ```
 
-ใส่ค่า:
+ใส่ `VITE_GAS_URL=https://script.google.com/macros/s/xxxx/exec` (URL จากข้อ 3.6) แล้วบันทึก — ไฟล์ `.env` ไม่ถูก commit
 
-```
-VITE_SUPABASE_URL=https://<Reference ID>.supabase.co
-VITE_SUPABASE_ANON_KEY=<anon public key>
-```
-
-### 8. รันบนเครื่อง
+### 5. รันบนเครื่อง
 
 ```powershell
 npm run dev
 ```
 
-เปิด http://localhost:5173 → ล็อกอิน → หน้า Onboarding ให้ตรวจ/แก้ข้อมูลแล้วกด **เริ่มใช้งาน**
+เปิด <http://localhost:5173/workout-log/> → ใส่รหัสผ่าน (= API_KEY) → ครั้งแรกแอปจะสร้างข้อมูลตั้งต้น (โปรแกรมเวท, คลังอาหาร, เป้าหมาย ฯลฯ) ลง Sheet ให้ → หน้า Onboarding
 
-เปิดจากมือถือในวง Wi-Fi เดียวกัน: `npm run dev -- --host` แล้วเข้า `http://<IP เครื่อง>:5173`
+**ทดลองโดยไม่ใช้ Google:** `npm run gas:emulator` (อีกหน้าต่าง) แล้วตั้ง `VITE_GAS_URL=http://localhost:8787` รหัสผ่าน `dev-password` (ข้อมูลหายเมื่อปิด)
 
-### 9. Deploy ขึ้น GitHub Pages
-1. สร้าง repo ใหม่ที่ GitHub (เช่น `workout-log`) — แนะนำตั้งเป็น **Private** ก็ได้ถ้าใช้ GitHub Pro ไม่งั้นต้อง Public
-   (ข้อมูลอยู่ใน Supabase ไม่ได้อยู่ใน repo)
-2. push โค้ด:
-   ```powershell
-   git add .
-   git commit -m "Workout Log phase 1"
-   git remote add origin https://github.com/<user>/workout-log.git
-   git push -u origin main
-   ```
-3. ที่ repo → **Settings → Pages → Build and deployment → Source: GitHub Actions**
-4. ตั้ง secrets (ขั้นที่ 10) แล้วไปที่แท็บ **Actions → Deploy to GitHub Pages → Run workflow**
-5. เว็บจะอยู่ที่ `https://<user>.github.io/workout-log/`
+### 6. ย้ายข้อมูลเดิมจาก Supabase (ทำครั้งเดียว ถ้าเคยใช้เวอร์ชัน Supabase)
+ทำ**ก่อน**ล็อกอินแอปครั้งแรก (Sheet ต้องว่าง)
 
-workflow จะ build ใหม่อัตโนมัติทุกครั้งที่ push ขึ้น `main` (ตั้ง base path จากชื่อ repo ให้เอง และใช้ HashRouter จึง refresh หน้าไหนก็ได้)
+**แบบ A — จาก Supabase โดยตรง (ได้ข้อมูลล่าสุด + รูป):** ถ้าโปรเจกต์ถูกพัก ให้กด **Restore** ใน Supabase Dashboard ก่อน
 
-### 10. ตั้ง GitHub Actions secrets
-repo → **Settings → Secrets and variables → Actions → New repository secret**
+```powershell
+$env:GAS_URL="https://script.google.com/macros/s/xxxx/exec"; $env:GAS_KEY="API_KEY ของคุณ"
+$env:SUPABASE_URL="https://xxxx.supabase.co"; $env:SUPABASE_SERVICE_ROLE_KEY="service_role key"
+npm run migrate:supabase
+```
 
-| Name | Value |
-|---|---|
-| `VITE_SUPABASE_URL` | Project URL |
-| `VITE_SUPABASE_ANON_KEY` | anon public key |
+**แบบ B — จากไฟล์ backup JSON** (จาก Export ในแอป หรือ artifact ของ backup workflow — ไม่มีรูป):
 
-anon key ถูกฝังในเว็บอยู่แล้วโดยธรรมชาติ ความปลอดภัยมาจาก RLS (แต่ละแถวเข้าถึงได้เฉพาะ `user_id` ของตัวเอง)
+```powershell
+$env:GAS_URL="..."; $env:GAS_KEY="..."; $env:MIGRATE_FILE="C:\path\backup-2026-09-28.json"
+npm run migrate:supabase
+```
 
-### 11. กันโปรเจกต์ Supabase ฟรีถูกพัก
-workflow `Keep Supabase awake` (`.github/workflows/keepalive.yml`) จะ query ฐานข้อมูลทุก 3 วันอัตโนมัติ ใช้ secrets ชุดเดียวกัน
-ทดสอบได้ที่ **Actions → Keep Supabase awake → Run workflow**
+สคริปต์จะแสดงจำนวนแถวต่อตารางและตรวจว่าครบ · แผนวิ่งที่กำลังใช้อยู่อาจต้องกด "เริ่มแผน" ใหม่ (แบบ B)
+เสร็จแล้วปิด/ลบโปรเจกต์ Supabase ได้
 
-### 12. การแจ้งเตือน (Edge Function + pg_cron)
-ระบบ: `pg_cron` เรียก Edge Function `notify` ทุก 15 นาที → ส่งตามเวลาที่ตั้งในแอป (เพิ่มเติม → การแจ้งเตือน)
-- เช้า: ชั่งน้ำหนัก + แผนวันนี้ · ค่ำ: ยังไม่บันทึกอาหาร/ออกกำลังกาย/น้ำหนัก (ถ้าครบแล้วไม่ส่ง) · วันจันทร์เช้า: สรุปรายสัปดาห์
+### 7. Deploy ขึ้น GitHub Pages
+**Settings → Secrets and variables → Actions → New repository secret** ใส่:
 
-**ตั้งค่าครั้งแรก** (ทำให้แล้วสำหรับโปรเจกต์นี้ ยกเว้นข้อ 3):
-1. Secrets ของ function:
-   ```powershell
-   npx supabase secrets set NOTIFY_SECRET=<สุ่มยาวๆ> VAPID_PUBLIC_KEY=<...> VAPID_PRIVATE_KEY=<...> VAPID_SUBJECT=https://<user>.github.io/workout-log/ APP_URL=https://<user>.github.io/workout-log/
-   npm run functions:deploy
-   ```
-   (สร้าง VAPID ด้วย `npx web-push generate-vapid-keys` แล้วใส่ public key ใน `src/lib/push.ts`)
-2. รัน `supabase/setup_cron.sql` ใน SQL Editor (แทน `<NOTIFY_SECRET>` และ `<PROJECT_REF>` ก่อน)
-3. **อีเมล:** สมัคร https://resend.com (ฟรี 3,000 ฉบับ/เดือน) ด้วย**อีเมลเดียวกับที่ล็อกอินแอป** → API Keys → Create →
-   ```powershell
-   npx supabase secrets set RESEND_API_KEY=re_xxxxxxxx
-   ```
-   ผู้ส่งเริ่มต้นคือ `onboarding@resend.dev` ซึ่งส่งได้เฉพาะอีเมลเจ้าของบัญชี Resend (พอสำหรับใช้คนเดียว)
-4. ในแอป: เพิ่มเติม → การแจ้งเตือน → เปิดอีเมล/Web Push → กด "ทดสอบเช้า"
+| Secret | ค่า | ใช้กับ |
+|---|---|---|
+| `VITE_GAS_URL` | URL เว็บแอป (ข้อ 3.6) | deploy, แจ้งเตือน, backup |
+| `GAS_KEY` | API_KEY (**เฉพาะค่า** ไม่ต้องมี `GAS_KEY=`) | แจ้งเตือน, backup |
+| `VAPID_PRIVATE_KEY` | private key ของ Web Push (ดูไฟล์ `secrets-for-github.txt` ถ้ามี) | Push |
 
-**Web Push:** Android/คอมเปิดได้เลย · iPhone ต้องติดตั้งลงหน้าจอโฮมก่อน (iOS 16.4+) แล้วเปิดจากไอคอนบนหน้าจอโฮม
+**Settings → Pages → Source: GitHub Actions** แล้ว push:
 
-### 12.1 สำรองข้อมูลอัตโนมัติ
-workflow `Weekly backup` export JSON ทุกวันจันทร์ 03:00 เก็บเป็น artifact 90 วัน (ไม่ commit ลง repo)
-ต้องเพิ่ม GitHub secret `SUPABASE_SERVICE_ROLE_KEY` = Supabase → Project Settings → API Keys → **Secret key** (`sb_secret_...` หรือ legacy `service_role`) — ถ้าใส่ผิดรูปแบบ log จะบอกสาเหตุ
-— key นี้ใช้ใน GitHub Actions เท่านั้น ห้ามใส่ในโค้ดหน้าเว็บ · ดาวน์โหลดได้ที่ Actions → Weekly backup → Artifacts
-กู้คืน: เพิ่มเติม → Export / Import → เลือกไฟล์ JSON (ตรวจข้อมูลซ้ำก่อนนำเข้า)
+```powershell
+git add -A
+git commit -m "update"
+git push
+```
 
-### 13. ติดตั้งเป็นแอปบนมือถือ (PWA)
+แท็บ **Actions** → รอ "Deploy to GitHub Pages" เขียว → เปิด <https://piphutpong.github.io/workout-log/>
+
+### 8. การแจ้งเตือน (อีเมล + Web Push)
+- workflow **Notify** รันทุก 15 นาที (GitHub อาจช้ากว่ากำหนด 5-20 นาที) → ส่งเมื่อถึงเวลาที่ตั้งไว้ (ภายใน 3 ชม.) วันละครั้งต่อประเภท
+- อีเมลส่งจาก Gmail ของคุณ**ถึงตัวเอง** (MailApp, วันละ ≤ 100 ฉบับ) · Push ส่งไปทุกเครื่องที่กด "เปิดการแจ้งเตือน"
+- ตั้งเวลา/เปิดปิด: แอป → เพิ่มเติม → การแจ้งเตือน · ทดสอบทันที: ปุ่ม "ทดสอบเช้า/ค่ำ/สรุป"
+  หรือแท็บ Actions → Notify → **Run workflow** → ใส่ `morning`/`evening`/`weekly`
+- iPhone: ต้องติดตั้งเป็นแอป (ข้อ 10) ก่อนจึงจะรับ Push ได้ (iOS 16.4+)
+
+### 9. สำรองข้อมูล
+- workflow **Weekly backup** (ทุกวันจันทร์) ดึงข้อมูลทั้งหมดเป็น JSON เก็บเป็น artifact 90 วัน (แท็บ Actions → run → Artifacts)
+- ตัว Google Sheet เองมีประวัติเวอร์ชัน: **ไฟล์ → ประวัติเวอร์ชัน**
+- ในแอป: เพิ่มเติม → 💾 Export JSON/CSV
+
+### 10. ติดตั้งเป็นแอปบนมือถือ (PWA)
 **iPhone (Safari เท่านั้น):** เปิดเว็บ → ปุ่ม **แชร์** (สี่เหลี่ยมมีลูกศรขึ้น) → **เพิ่มไปยังหน้าจอโฮม** → เพิ่ม
 **Android (Chrome):** เปิดเว็บ → เมนู ⋮ → **ติดตั้งแอป** / **เพิ่มลงในหน้าจอหลัก**
 **คอมพิวเตอร์ (Chrome/Edge):** กดไอคอนติดตั้งที่แถบที่อยู่
+
+### การซิงก์
+- บันทึกอะไรก็ตาม → เห็นผลทันที (เก็บในเครื่อง) → ส่งขึ้น Sheet ภายใน ~1 วินาที (ออฟไลน์ = รอส่ง แล้วส่งเองเมื่อออนไลน์)
+- ใช้หลายเครื่อง: เครื่องอื่นจะดึงข้อมูลใหม่เมื่อเปิดแอป/สลับกลับมา (ทุก ≥ 2 นาที) หรือกด เพิ่มเติม → "ซิงก์ตอนนี้"
+- ออกจากระบบ = ลบข้อมูลในเครื่อง (ข้อมูลใน Sheet ยังอยู่)
 
 ---
 
 ## ทดสอบ
 
 ```powershell
-npm test          # unit test: pace, 1RM, % เป้าหมาย, regression, TDEE, day_no แผนวิ่ง, timer, กฎสรุปรายสัปดาห์, streak
-npm run db:check  # รัน migration + seed บน PGlite (Postgres ใน WASM) แล้วทดสอบ RLS, bootstrap_user, today_plan
-npm run typecheck
+npm test            # unit test: สูตร, engine (เทียบผลกับ SQL เดิม), store, Apps Script (บน Sheet จำลอง), ข้อความแจ้งเตือน, UI บางส่วน
+npm run typecheck   # แอป + scripts + ตรวจว่า schema.ts ตรงกับ types
 npm run build
 ```
 
-### อัปเดตฐานข้อมูลเมื่อมี migration ใหม่
-
-```powershell
-npx supabase db push
-```
-
-migration `20261001000001_phase2.sql` จะเพิ่มโปรแกรม "นายแบบ 1-3" ให้ผู้ใช้เดิมอัตโนมัติ (ผู้ใช้ใหม่ได้ตอนล็อกอินครั้งแรก)
-
 ### ทดสอบด้วยมือ (Phase 1)
-1. **ล็อกอินครั้งแรก** → เห็นหน้า Onboarding ค่าตั้งต้นครบ (178.6 ซม., MaxHR 186, เป้า 76 กก., ตาราง จ/พ/ศ เวท, อ/พฤ/ส วิ่ง, อา พัก) → กดเริ่มใช้งาน
+1. **ล็อกอินครั้งแรก** (รหัสผ่าน = API_KEY) → เห็นหน้า Onboarding ค่าตั้งต้นครบ (178.6 ซม., MaxHR 186, เป้า 76 กก., ตาราง จ/พ/ศ เวท, อ/พฤ/ส วิ่ง, อา พัก) → กดเริ่มใช้งาน
 2. **หน้าวันนี้** → วันจันทร์/พุธ/ศุกร์ควรเป็น "วันเวท · โปรแกรม A/B", อังคาร/พฤหัส/เสาร์เป็นวิ่ง พร้อม segment และ HR เป็น bpm
 3. **น้ำหนักตัว** → กด +/− แล้วบันทึก → กดซ้ำจะเป็น "แก้ไข" (ทับค่าเดิม วันละ 1 ค่า)
 4. **บันทึกเวท** → Rehab แสดงก่อนท่าหลัก, ติ๊ก ✓ เซ็ต → rest timer นับถอยหลัง มีเสียง/สั่นเมื่อครบ, ปิดแอปกลางคันแล้วเปิดใหม่ → draft ยังอยู่,
@@ -213,7 +191,7 @@ migration `20261001000001_phase2.sql` จะเพิ่มโปรแกรม
 7. **บันทึกวิ่ง** → กรอก 5 กม. / 30:00 → pace 6:00 ทันที, กรอก HR → แสดง %MaxHR เทียบช่วงแผน, บันทึกครั้งที่ 2 → เทียบ pace กับครั้งก่อน
 8. **Interval timer** → เลือก Interval → เริ่ม → เสียง 3-2-1 และสั่นตอนเปลี่ยนช่วง
 9. **ข้าม/เลื่อนแผน** → กด "เลื่อนแผน 1 วัน" → พรุ่งนี้จะเป็น Day เดิม, ในปฏิทินแผนวันที่ขยับ
-10. **ออฟไลน์** → DevTools → Network → Offline (หรือเปิดโหมดเครื่องบิน) → บันทึกน้ำหนัก/วิ่ง → มุมขวาบนขึ้น "รอส่ง N รายการ" → กลับมาออนไลน์ ส่งอัตโนมัติ
+10. **ออฟไลน์** → DevTools → Network → Offline (หรือโหมดเครื่องบิน) → บันทึกน้ำหนัก/วิ่ง → เห็นผลทันที มุมขวาบนขึ้น "รอส่ง N รายการ" → กลับมาออนไลน์ ส่งอัตโนมัติ → เปิด Google Sheet เห็นแถวใหม่
 
 ### ทดสอบด้วยมือ (Phase 2)
 1. **ภาพรวม** (หน้าแรก) → การ์ดเป้าหมายทุกอันพร้อม progress bar, สถานะ ✅/⚠️/🎯, วันที่เหลือ, คาดการณ์วันถึงเป้า (ต้องมีน้ำหนัก ≥ 4 วันในช่วง ≥ 7 วัน)
@@ -238,7 +216,7 @@ migration `20261001000001_phase2.sql` จะเพิ่มโปรแกรม
 6. **แนะนำ** → ถ้าโปรตีนยังขาด ≥ 10 g จะเสนอเช่น "อกไก่ต้ม 150 g หรือ Whey 1 scoop + ไข่ต้ม 3 ฟอง"
 7. **Adaptive TDEE** → ต้องบันทึกอาหาร ≥ 10 จาก 14 วัน + น้ำหนัก ไม่งั้นขึ้น "ข้อมูลไม่พอ" · สัปดาห์ใหม่จะเสนอปรับ kcal (ต้องกด "ยืนยันปรับ" เท่านั้น)
 8. **น้ำ** +250/+500 และ **อาหารเสริม** ติ๊กรายวัน (มีบนหน้าวันนี้ด้วย)
-9. รายการอาหารที่ค่าอาจคลาดเคลื่อนมาก: `supabase/FOODS_REVIEW.md`
+9. รายการอาหารที่ค่าอาจคลาดเคลื่อนมาก: `docs/FOODS_REVIEW.md`
 
 ### ทดสอบด้วยมือ (Phase 4)
 1. **รองเท้า** (เพิ่มเติม → 👟 รองเท้า หรือลิงก์ใต้ช่องรองเท้าในหน้าวิ่ง) → เพิ่มรองเท้า ตั้งระยะเดิม 650 กม. → บันทึกวิ่งด้วยรองเท้านั้น → ขึ้นเตือน "ใกล้ถึงระยะเปลี่ยน"
@@ -248,8 +226,11 @@ migration `20261001000001_phase2.sql` จะเพิ่มโปรแกรม
 5. **Warm-up** → จัดการโปรแกรม → 🔥 Warm-up routine แก้รายการ → หน้าวันนี้แสดงตามนั้น
 6. **หุบ/กางท่า** → หน้าเวทเปิดเฉพาะท่าแรก ติ๊กครบทุกเซ็ตแล้วหุบเองและเปิดท่าถัดไป (superset กางคู่กัน)
 7. **แจ้งเตือนในแอป** → หน้าวันนี้มีการ์ด 🔔 เมื่อเข้ากฎข้อ 6 (เช่น เจ็บ ≥ 4 ติดกัน 3 ครั้ง, วิ่งเพิ่มเกิน 10%)
-8. **อีเมล/Push** → เพิ่มเติม → การแจ้งเตือน → เปิด → "ทดสอบเช้า/ค่ำ/สรุป"
+8. **อีเมล/Push** → เพิ่มเติม → การแจ้งเตือน → เปิด → "ทดสอบเช้า/ค่ำ/สรุป" (อีเมลเข้า Gmail ตัวเอง)
 9. **Export/Import** → เพิ่มเติม → 💾 → JSON / CSV (zip เปิดใน Excel) → Import ไฟล์ JSON เดิม → ทุกแถวขึ้นว่า "ซ้ำ (ข้าม)"
+
+---
+10. **รูป** → ร่างกาย → อัปโหลดรูป → เปิด Google Drive โฟลเดอร์ "Workout Log Photos" เห็นไฟล์
 
 ---
 
@@ -257,16 +238,16 @@ migration `20261001000001_phase2.sql` จะเพิ่มโปรแกรม
 
 | คำสั่ง | ใช้ทำอะไร |
 |---|---|
-| `npm run plans:build` | สร้าง `seed_run_plans.json` ใหม่จาก `scripts/build-run-plans.mjs` |
-| `npm run seed:build` | สร้าง `seed.sql` ใหม่จาก JSON |
-| `npm run gen:types` | generate types จากฐานข้อมูลจริงลง `src/types/supabase.ts` (client ใช้ไฟล์นี้) — `src/types/schema-check.ts` จะฟ้องตอน typecheck ถ้า model ใน `database.ts` ไม่ตรงกับคอลัมน์จริง |
-| `npm run shared:sync` | คัดลอกกฎข้อ 6 (`src/lib/rules.ts`) ไปให้ Edge Function |
-| `npm run functions:deploy` | deploy Edge Function `notify` |
+| `npm run gas:build` | สร้าง `gas/Code.gs` ใหม่ (หลังแก้ `gas/Code.template.js` หรือ `src/lib/schema.ts`) → วางใน Apps Script แล้ว deploy เวอร์ชันใหม่ |
+| `npm run gas:emulator` | Apps Script จำลองที่ `http://localhost:8787` (รหัส `dev-password`) |
+| `npm run plans:build` | สร้าง `src/data/run-plans.json` ใหม่จาก `scripts/build-run-plans.mjs` |
+| `npm run notify` / `npm run backup` | รันแจ้งเตือน/backup เองในเครื่อง (ต้องตั้ง `$env:GAS_URL`, `$env:GAS_KEY`) |
+| `npm run migrate:supabase` | ย้ายข้อมูลจาก Supabase (ข้อ 6) |
 | `node scripts/gen-icons.mjs` | สร้างไอคอน PWA ใหม่ |
 
-## เพิ่มตาราง/แก้ schema
-สร้างไฟล์ใหม่ใน `supabase/migrations/` (ชื่อขึ้นต้นด้วยวันเวลา เช่น `20261001000001_add_xxx.sql`) **ห้ามแก้ migration เดิม**
-แล้ว `npx supabase db push` และ `npm run db:check`
+## เพิ่มตาราง/คอลัมน์
+1. แก้ `src/lib/schema.ts` (+ type ใน `src/types/database.ts` — `npm run typecheck` จะฟ้องถ้าไม่ตรงกัน)
+2. `npm run gas:build` → วาง `gas/Code.gs` ใหม่ใน Apps Script → deploy เวอร์ชันใหม่ (คอลัมน์ใหม่ถูกเพิ่มท้ายแท็บเอง)
 
 ## ข้อจำกัดความรับผิดชอบ
 ตัวเลขโภชนาการ แคลอรี่ และคำแนะนำทั้งหมดในแอปเป็นค่าประมาณ ไม่ใช่คำแนะนำทางการแพทย์

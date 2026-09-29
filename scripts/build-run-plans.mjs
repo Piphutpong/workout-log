@@ -1,4 +1,4 @@
-// สร้าง supabase/seed_run_plans.json จากตารางวิ่ง FASTBULL RUN (ถอดจากรูป)
+// สร้าง src/data/run-plans.json จากตารางวิ่ง FASTBULL RUN (ถอดจากรูป)
 // รัน: npm run plans:build   (แล้วตามด้วย npm run seed:build เพื่ออัปเดต seed.sql)
 //
 // ทุกวันเก็บ description = ข้อความต้นฉบับ และแยก segments ให้มากที่สุด
@@ -662,7 +662,7 @@ const out = {
   zones_pct_maxhr: ZONE,
   plans,
 }
-writeFileSync(join(root, 'supabase', 'seed_run_plans.json'), JSON.stringify(out, null, 2) + '\n')
+writeFileSync(join(root, 'src', 'data', 'run-plans.json'), JSON.stringify(out, null, 2) + '\n')
 
 const review = plans.flatMap((p) => p.days.filter((d) => d.note === 'ตรวจสอบ').map((d) => `${p.name} D${d.day_no}: ${d.review_reason}`))
 console.log(`wrote ${plans.map((p) => `${p.name}=${p.days.length}`).join(', ')}`)
